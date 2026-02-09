@@ -25,7 +25,8 @@ const menuItems = [
   { name: "Wassereis", price: 0.20 },
   { name: "Kinderriegel", price: 0.30 },
   { name: "Schokobrötchen", price: 0.30 },
-  { name: "Haribo", price: 0.10 }
+  { name: "Haribo", price: 0.10 },
+  { name: "Knoppers", price: 0.30 },
 
 ];
 
