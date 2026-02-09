@@ -106,6 +106,9 @@ app.get("/", (req, res) => {
       <button type="submit">Status anzeigen</button>
     </form>
     <p class="hint">Oder scanne den QR-Code, den du bei der Bestellung erhalten hast.</p>
+    <div class="card">
+      <a href="/bestellen"><button type="button">Zur Bestellseite</button></a>
+    </div>
   `;
   res.send(
     renderPage({
@@ -137,6 +140,7 @@ app.get("/bestellen", (req, res) => {
     <header class="page-header">
       <h1>Bestellungen aufnehmen</h1>
       <p>Neue Bestellungen aufnehmen und bestehende Bestellungen bearbeiten.</p>
+      <a href="/"><button type="button">Zurück zur Startseite</button></a>
     </header>
     <section class="grid">
       <div class="card">
