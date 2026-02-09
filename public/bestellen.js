@@ -6,6 +6,7 @@ const orderResult = document.getElementById("order-result");
 const staffOrders = document.getElementById("staff-orders");
 
 let menu = [];
+let lastOrderData = null;
 
 socket.emit("join", { role: "staff" });
 
@@ -73,15 +74,45 @@ orderForm.addEventListener("submit", async (event) => {
   }
 
   const data = await response.json();
+  lastOrderData = data;
   orderResult.innerHTML = `
     <p><strong>Bestellung aufgenommen!</strong></p>
     <p>Bestell-ID: <span class="badge">${data.id}</span></p>
-    <p>QR-Code für den Kunden:</p>
-    <img class="qr" src="${data.qrCodeDataUrl}" alt="QR-Code" />
+    <button class="show-qr-btn" onclick="showQRModal()">QR-Code anzeigen</button>
   `;
   orderForm.reset();
   updateTotal();
+  showQRModal();
 });
+
+function showQRModal() {
+  if (!lastOrderData) return;
+  
+  const modal = document.createElement('div');
+  modal.className = 'qr-modal';
+  modal.innerHTML = `
+    <div class="qr-modal-content">
+      <button class="qr-modal-close" onclick="closeQRModal()">&times;</button>
+      <h2>QR-Code für Kunden</h2>
+      <p>Bestell-ID: <span class="badge">${lastOrderData.id}</span></p>
+      <img src="${lastOrderData.qrCodeDataUrl}" alt="QR-Code" />
+      <p class="hint">Kunden können diesen QR-Code scannen, um den Bestellstatus zu verfolgen.</p>
+    </div>
+  `;
+  modal.onclick = (e) => {
+    if (e.target === modal) closeQRModal();
+  };
+  document.body.appendChild(modal);
+}
+
+function closeQRModal() {
+  const modal = document.querySelector('.qr-modal');
+  if (modal) modal.remove();
+}
+
+// Global für onclick-Handler
+window.showQRModal = showQRModal;
+window.closeQRModal = closeQRModal;
 
 function renderStaffOrders(orders) {
   if (!orders.length) {
