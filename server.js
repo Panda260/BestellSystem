@@ -14,11 +14,19 @@ const ORDER_PASSWORD = process.env.BESTELL_PASSWORD || "admin";
 const SESSION_SECRET = process.env.SESSION_SECRET || "bestellsystem-secret";
 
 const menuItems = [
-  { name: "Pizza Margherita", price: 8.5 },
-  { name: "Pizza Salami", price: 9.5 },
-  { name: "Pasta Bolognese", price: 10.0 },
-  { name: "Salat", price: 6.0 },
-  { name: "Getränk", price: 2.5 }
+  { name: "Pizza Margherita", price: 2.0 },
+  { name: "Pizza Mozzarella", price: 2.50 },
+  { name: "Brezel", price: 10.0 },
+  { name: "Spezi", price: 1.0 },
+  { name: "Cola", price: 1.0 },
+  { name: "Fanta", price: 1.0 },
+  { name: "Sprite", price: 1.0 },
+  { name: "Apfelschorle", price: 1.0 },
+  { name: "Wassereis", price: 0.20 },
+  { name: "Kinderriegel", price: 0.30 },
+  { name: "Schokobrötchen", price: 0.30 },
+  { name: "Haribo", price: 0.10 }
+
 ];
 
 const orders = new Map();
