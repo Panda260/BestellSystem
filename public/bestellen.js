@@ -20,18 +20,22 @@ async function loadMenu() {
   menuContainer.innerHTML = menu
     .map(
       (item, index) => `
-      <div class="menu-item">
-        <input type="checkbox" id="item-${index}" data-index="${index}" />
+      <div class="menu-item" onclick="toggleItem(${index})">
+        <input type="checkbox" id="item-${index}" data-index="${index}" onclick="event.stopPropagation(); updateTotal()" />
         <label for="item-${index}">${item.name} (${item.price.toFixed(2)} €)</label>
-        <input type="number" id="qty-${index}" data-index="${index}" value="1" min="1" />
+        <input type="number" id="qty-${index}" data-index="${index}" value="1" min="1" onclick="event.stopPropagation()" oninput="updateTotal()" />
       </div>
     `
     )
     .join("");
-
-  menuContainer.addEventListener("input", updateTotal);
-  menuContainer.addEventListener("change", updateTotal);
 }
+
+window.toggleItem = (index) => {
+  const checkbox = document.getElementById(`item-${index}`);
+  checkbox.checked = !checkbox.checked;
+  updateTotal();
+};
+
 
 function updateTotal() {
   const selections = getSelectedItems();
@@ -62,11 +66,14 @@ orderForm.addEventListener("submit", async (event) => {
     return;
   }
 
+  const customerName = document.getElementById("customer-name").value;
+
   const response = await fetch("/api/orders", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ items })
+    body: JSON.stringify({ items, customerName })
   });
+
 
   if (!response.ok) {
     orderResult.textContent = "Fehler beim Anlegen der Bestellung.";
@@ -113,6 +120,25 @@ function closeQRModal() {
 // Global für onclick-Handler
 window.showQRModal = showQRModal;
 window.closeQRModal = closeQRModal;
+window.showSpecificQR = async (orderId) => {
+  const response = await fetch(`/api/orders/${orderId}`);
+  const order = await response.json();
+  const orderUrl = `${window.location.protocol}//${window.location.host}/${order.id}`;
+  // We can't easily generate QR on client without a lib, but the server has one.
+  // Actually, we can just use an API or the same logic as before if we store the URL.
+  // Let's just create a temporary hidden img to get the data URL or better, just show the modal with a placeholder and fetch it.
+  
+  // Actually, the server doesn't have a GET /api/orders/:id/qr endpoint yet. 
+  // I'll add one or just generate it here if I had a lib. 
+  // Wait, I can just use a public QR API or add an endpoint to server.js.
+  // I'll add an endpoint to server.js: GET /api/orders/:id/qr
+  
+  const qrResponse = await fetch(`/api/orders/${orderId}/qr`);
+  const { qrCodeDataUrl } = await qrResponse.json();
+  lastOrderData = { id: orderId, qrCodeDataUrl };
+  showQRModal();
+};
+
 
 function renderStaffOrders(orders) {
   if (!orders.length) {
@@ -124,8 +150,12 @@ function renderStaffOrders(orders) {
     .map(
       (order) => `
       <div class="order-card">
-        <h3>Bestellung #${order.id}</h3>
+        <div class="order-card-header">
+          <h3>Bestellung #${order.id} ${order.customerName ? `(${order.customerName})` : ""}</h3>
+          <button class="qr-small-btn" onclick="showSpecificQR('${order.id}')">QR</button>
+        </div>
         <ul class="status-list">
+
           ${order.items
             .map(
               (item, index) => `
