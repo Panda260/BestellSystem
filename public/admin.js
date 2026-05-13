@@ -6,11 +6,12 @@ async function loadAdminMenu() {
     list.innerHTML = menu.map(item => `
         <div class="card admin-item ${item.active ? '' : 'inactive'}">
             <div class="admin-item-info">
-                <input type="text" value="${item.name}" placeholder="Name" onchange="updateItem(${item.id}, 'name', this.value)" />
-                <input type="number" step="0.01" value="${item.price.toFixed(2)}" placeholder="Preis" onchange="updateItem(${item.id}, 'price', this.value)" />
-                <input type="number" value="${item.max_limit || ''}" placeholder="Limit" onchange="updateItem(${item.id}, 'max_limit', this.value)" title="Max Limit (12:30-13:45)" />
-                <input type="text" value="${item.category || ''}" placeholder="Kategorie" onchange="updateItem(${item.id}, 'category', this.value)" title="Kategorie für gemeinsames Limit" />
+                <div><small>Name:</small><input type="text" value="${item.name}" placeholder="Name" onchange="updateItem(${item.id}, 'name', this.value)" /></div>
+                <div><small>Preis:</small><input type="number" step="0.01" value="${item.price.toFixed(2)}" placeholder="Preis" onchange="updateItem(${item.id}, 'price', this.value)" /></div>
+                <div><small>Limit:</small><input type="number" value="${item.max_limit || ''}" placeholder="Kein Limit" onchange="updateItem(${item.id}, 'max_limit', this.value)" title="Max Limit (12:30-13:45)" /></div>
+                <div><small>Kategorie:</small><input type="text" value="${item.category || ''}" placeholder="Kategorie" onchange="updateItem(${item.id}, 'category', this.value)" title="Kategorie für gemeinsames Limit" /></div>
             </div>
+
             <div class="admin-item-actions">
 
                 <button class="${item.active ? 'secondary' : 'success'}" onclick="updateItem(${item.id}, 'active', ${!item.active})">

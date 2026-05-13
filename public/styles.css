@@ -320,9 +320,10 @@ button:hover,
 /* Admin Item Styles */
 .admin-item {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid #e2e8f0;
 }
 
 .admin-item.inactive {
@@ -331,20 +332,39 @@ button:hover,
 }
 
 .admin-item-info {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr;
+  gap: 12px;
+  width: 100%;
+}
+
+.admin-item-info div {
   display: flex;
-  gap: 8px;
-  flex: 1;
+  flex-direction: column;
+}
+
+.admin-item-info small {
+  font-size: 0.7rem;
+  color: #64748b;
+  margin-bottom: 2px;
 }
 
 .admin-item-info input {
+  width: 100%;
   margin-bottom: 0;
+  padding: 8px;
+  font-size: 0.9rem;
 }
+
 
 .admin-item-actions {
   display: flex;
+  justify-content: flex-end;
   gap: 8px;
-  margin-left: 12px;
+  padding-top: 8px;
+  border-top: 1px solid #f1f5f9;
 }
+
 
 /* Staff QR Button */
 .order-card-header {
