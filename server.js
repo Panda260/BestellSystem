@@ -65,10 +65,12 @@ function serializeOrder(order) {
     id: order.id,
     items: order.items,
     total: order.total,
+    customerName: order.customerName,
     createdAt: order.createdAt,
     completed: order.completed
   };
 }
+
 
 function broadcastOrders() {
   const allActiveOrders = Array.from(orders.values())
