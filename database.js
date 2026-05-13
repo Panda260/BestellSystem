@@ -21,7 +21,18 @@ const initDb = () => {
                 active INTEGER DEFAULT 1,
                 max_limit INTEGER DEFAULT NULL,
                 category TEXT DEFAULT NULL
-            )`);
+            )`, () => {
+                // Migration: add columns if they don't exist (for existing DBs)
+                db.all("PRAGMA table_info(menu_items)", (err, columns) => {
+                    if (!err && columns) {
+                        const hasMaxLimit = columns.some(c => c.name === 'max_limit');
+                        const hasCategory = columns.some(c => c.name === 'category');
+                        if (!hasMaxLimit) db.run("ALTER TABLE menu_items ADD COLUMN max_limit INTEGER DEFAULT NULL");
+                        if (!hasCategory) db.run("ALTER TABLE menu_items ADD COLUMN category TEXT DEFAULT NULL");
+                    }
+                });
+            });
+
 
             db.run(`CREATE TABLE IF NOT EXISTS categories (
                 name TEXT PRIMARY KEY,
