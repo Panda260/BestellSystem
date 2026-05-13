@@ -14,7 +14,6 @@ const db = new sqlite3.Database(dbPath);
 const initDb = () => {
     return new Promise((resolve, reject) => {
         db.serialize(() => {
-            // Menu Items table
             db.run(`CREATE TABLE IF NOT EXISTS menu_items (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
@@ -22,34 +21,16 @@ const initDb = () => {
                 active INTEGER DEFAULT 1,
                 max_limit INTEGER DEFAULT NULL,
                 category TEXT DEFAULT NULL
-            )`, (err) => {
+            )`);
 
+            db.run(`CREATE TABLE IF NOT EXISTS categories (
+                name TEXT PRIMARY KEY,
+                max_limit INTEGER
+            )`, (err) => {
                 if (err) return reject(err);
                 
-                // Check if we need to seed
-                db.get("SELECT COUNT(*) as count FROM menu_items", (err, row) => {
-                    if (err) return reject(err);
-                    if (row.count === 0) {
-                        const initialItems = [
-                            { name: "Pizza Margherita", price: 2.0 },
-                            { name: "Pizza Mozzarella", price: 2.50 },
-                            { name: "Brezel", price: 0.50 },
-                            { name: "Spezi", price: 1.0 },
-                            { name: "Cola", price: 1.0 },
-                            { name: "Fanta", price: 1.0 },
-                            { name: "Sprite", price: 1.0 },
-                            { name: "Apfelschorle", price: 1.0 },
-                            { name: "Wassereis", price: 0.20 },
-                            { name: "Kinderriegel", price: 0.30 },
-                            { name: "Schokobrötchen", price: 0.30 },
-                            { name: "Haribo", price: 0.10 },
-                            { name: "Knoppers", price: 0.30 }
-                        ];
-                        const stmt = db.prepare("INSERT INTO menu_items (name, price) VALUES (?, ?)");
-                        initialItems.forEach(item => stmt.run(item.name, item.price));
-                        stmt.finalize();
-                    }
-                });
+                // Seed Pizza category
+                db.run("INSERT OR IGNORE INTO categories (name, max_limit) VALUES (?, ?)", ["Pizza", null]);
             });
 
             // Orders table (for persistence)
@@ -68,6 +49,7 @@ const initDb = () => {
         });
     });
 };
+
 
 const getMenuItems = (onlyActive = true) => {
     return new Promise((resolve, reject) => {
@@ -194,7 +176,7 @@ const getOrderStats = (date = null) => {
                 rows.forEach(row => {
                     const items = JSON.parse(row.items);
                     items.forEach(item => {
-                        stats[item.name] = (stats[item.name] || 0) + item.qty;
+                        stats[item.name] = (stats[item.name] || 0) + 1; // qty is always 1 now
                     });
                 });
                 resolve(stats);
@@ -203,7 +185,44 @@ const getOrderStats = (date = null) => {
     });
 };
 
+const getCategories = () => {
+    return new Promise((resolve, reject) => {
+        db.all("SELECT * FROM categories", (err, rows) => {
+            if (err) reject(err);
+            else resolve(rows);
+        });
+    });
+};
+
+const addCategory = (name, max_limit) => {
+    return new Promise((resolve, reject) => {
+        db.run("INSERT INTO categories (name, max_limit) VALUES (?, ?)", [name, max_limit], function(err) {
+            if (err) reject(err);
+            else resolve();
+        });
+    });
+};
+
+const updateCategory = (name, max_limit) => {
+    return new Promise((resolve, reject) => {
+        db.run("UPDATE categories SET max_limit = ? WHERE name = ?", [max_limit, name], function(err) {
+            if (err) reject(err);
+            else resolve();
+        });
+    });
+};
+
+const deleteCategory = (name) => {
+    return new Promise((resolve, reject) => {
+        db.run("DELETE FROM categories WHERE name = ?", [name], function(err) {
+            if (err) reject(err);
+            else resolve();
+        });
+    });
+};
+
 const resetStats = () => {
+
     return new Promise((resolve, reject) => {
         db.run("DELETE FROM orders", (err) => {
             if (err) reject(err);
@@ -224,7 +243,12 @@ module.exports = {
     getAllOrders,
     getOrderById,
     getOrderStats,
+    getCategories,
+    addCategory,
+    updateCategory,
+    deleteCategory,
     resetStats
 };
+
 
 

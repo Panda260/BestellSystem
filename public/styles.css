@@ -349,12 +349,13 @@ button:hover,
   margin-bottom: 2px;
 }
 
-.admin-item-info input {
+.admin-item-info input, .admin-item-info select {
   width: 100%;
   margin-bottom: 0;
   padding: 8px;
   font-size: 0.9rem;
 }
+
 
 
 .admin-item-actions {

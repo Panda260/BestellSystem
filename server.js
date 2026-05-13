@@ -127,7 +127,18 @@ app.get("/admin", (req, res) => {
     </header>
     <div class="grid">
       <div class="card">
+        <h2>Kategorien verwalten</h2>
+        <form id="add-category-form">
+          <input id="cat-name" type="text" placeholder="Kategoriename (z.B. Pizza)" required />
+          <input id="cat-limit" type="number" placeholder="Max Limit" />
+          <button type="submit">Kategorie hinzufügen</button>
+        </form>
+        <div id="admin-category-list" class="stats-table-container"></div>
+      </div>
+
+      <div class="card">
         <h2>Neues Produkt hinzufügen</h2>
+
         <form id="add-product-form">
           <label for="new-name">Name</label>
           <input id="new-name" type="text" required />
@@ -135,9 +146,13 @@ app.get("/admin", (req, res) => {
           <input id="new-price" type="number" step="0.01" required />
           <label for="new-limit">Max Limit (optional, 12:30-13:45)</label>
           <input id="new-limit" type="number" step="1" />
-          <label for="new-category">Kategorie (für gemeinsames Limit, optional)</label>
-          <input id="new-category" type="text" placeholder="z.B. Pizza" />
+          <label for="new-category">Kategorie</label>
+          <select id="new-category">
+            <option value="">Keine</option>
+            <!-- Categories will be added here by JS -->
+          </select>
           <button type="submit">Hinzufügen</button>
+
         </form>
       </div>
 
@@ -341,7 +356,50 @@ app.post("/api/admin/menu", async (req, res) => {
   }
 });
 
+app.get("/api/admin/categories", async (req, res) => {
+  if (!req.session?.isAuthenticated) return res.status(401).send();
+  try {
+    const cats = await db.getCategories();
+    res.json(cats);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/admin/categories", async (req, res) => {
+  if (!req.session?.isAuthenticated) return res.status(401).send();
+  const { name, max_limit } = req.body;
+  try {
+    await db.addCategory(name, max_limit);
+    res.status(201).json({ name, max_limit });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put("/api/admin/categories/:name", async (req, res) => {
+  if (!req.session?.isAuthenticated) return res.status(401).send();
+  const { max_limit } = req.body;
+  try {
+    await db.updateCategory(req.params.name, max_limit);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete("/api/admin/categories/:name", async (req, res) => {
+  if (!req.session?.isAuthenticated) return res.status(401).send();
+  try {
+    await db.deleteCategory(req.params.name);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.put("/api/admin/menu/:id", async (req, res) => {
+
   if (!req.session?.isAuthenticated) return res.status(401).send();
   const { name, price, active, max_limit, category } = req.body;
   try {
@@ -461,6 +519,7 @@ app.post("/api/orders", async (req, res) => {
     const today = now.toISOString().split('T')[0];
     const todayStats = await db.getOrderStats(today);
     const menu = await db.getMenuItems(true);
+    const categories = await db.getCategories();
     
     // Group by item name and category
     const categoryUsage = {};
@@ -478,14 +537,29 @@ app.post("/api/orders", async (req, res) => {
     // Check limits for new items
     for (const item of items) {
       const menuItem = menu.find(m => m.name === item.name);
-      if (menuItem && menuItem.max_limit) {
-        const currentQty = menuItem.category ? (categoryUsage[menuItem.category] || 0) : (itemUsage[item.name] || 0);
-        if (currentQty + item.qty > menuItem.max_limit) {
-          return res.status(400).json({ message: `Limit für ${menuItem.category || item.name} überschritten!` });
+      if (!menuItem) continue;
+
+      // 1. Check item-specific limit
+      if (menuItem.max_limit) {
+        const currentQty = itemUsage[item.name] || 0;
+        if (currentQty + 1 > menuItem.max_limit) {
+          return res.status(400).json({ message: `Limit für ${item.name} überschritten!` });
+        }
+      }
+
+      // 2. Check category limit
+      if (menuItem.category) {
+        const cat = categories.find(c => c.name === menuItem.category);
+        if (cat && cat.max_limit) {
+          const currentCatQty = categoryUsage[menuItem.category] || 0;
+          if (currentCatQty + 1 > cat.max_limit) {
+            return res.status(400).json({ message: `Kategorielimit für ${menuItem.category} überschritten!` });
+          }
         }
       }
     }
   }
+
 
 
   if (!Array.isArray(items) || items.length === 0) {
