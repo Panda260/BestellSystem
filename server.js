@@ -483,14 +483,21 @@ app.post("/api/orders", async (req, res) => {
     return;
   }
 
-  const orderItems = items.map((item) => ({
-    name: item.name,
-    price: Number(item.price),
-    qty: Number(item.qty),
-    done: false
-  }));
+  const orderItems = [];
+  items.forEach((item) => {
+    const qty = Number(item.qty);
+    for (let i = 0; i < qty; i++) {
+      orderItems.push({
+        name: item.name,
+        price: Number(item.price), // Note: total is price * 1 here, but we'll sum later
+        qty: 1,
+        done: false
+      });
+    }
+  });
 
-  const total = orderItems.reduce((sum, item) => sum + item.price * item.qty, 0);
+  const total = orderItems.reduce((sum, item) => sum + item.price, 0);
+
   const order = {
     id,
     items: orderItems,
