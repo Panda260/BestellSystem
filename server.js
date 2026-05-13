@@ -188,8 +188,10 @@ app.get("/statistik", (req, res) => {
       <h1>Statistik</h1>
       <div class="header-actions">
         <a href="/bestellen" class="button secondary">Zurück</a>
+        <button id="reset-stats-btn" class="button danger">Statistik zurücksetzen</button>
       </div>
     </header>
+
     <div class="grid">
       <div class="card">
         <h2>Übersicht Heute</h2>
@@ -362,7 +364,20 @@ app.get("/api/stats", async (req, res) => {
   }
 });
 
+app.delete("/api/stats", async (req, res) => {
+  if (!req.session?.isAuthenticated) return res.status(401).send();
+  try {
+    await db.resetStats();
+    orders.clear(); // Clear memory map too
+    broadcastOrders(); // Notify anyone watching
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get("/api/limits", async (req, res) => {
+
   try {
     const today = new Date().toISOString().split('T')[0];
     const todayStats = await db.getOrderStats(today);

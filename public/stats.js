@@ -35,4 +35,14 @@ function renderStats(elementId, stats) {
     `;
 }
 
+document.getElementById("reset-stats-btn").addEventListener("click", async () => {
+    if (!confirm("Bist du sicher? Alle Bestellungen und Statistiken werden unwiderruflich gelöscht!")) return;
+    
+    const response = await fetch("/api/stats", { method: "DELETE" });
+    if (response.ok) {
+        loadStats();
+    }
+});
+
 loadStats();
+

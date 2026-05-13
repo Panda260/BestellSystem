@@ -203,6 +203,15 @@ const getOrderStats = (date = null) => {
     });
 };
 
+const resetStats = () => {
+    return new Promise((resolve, reject) => {
+        db.run("DELETE FROM orders", (err) => {
+            if (err) reject(err);
+            else resolve();
+        });
+    });
+};
+
 module.exports = {
     initDb,
     getMenuItems,
@@ -214,6 +223,8 @@ module.exports = {
     updateOrderItems,
     getAllOrders,
     getOrderById,
-    getOrderStats
+    getOrderStats,
+    resetStats
 };
+
 
