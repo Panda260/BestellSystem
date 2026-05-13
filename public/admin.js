@@ -99,27 +99,36 @@ async function deleteCategory(name) {
 }
 
 async function updateItem(id, field, value) {
-    // Optimization: Don't fetch everything again, just find in local cache or send update
-    const response = await fetch("/api/admin/menu");
-    const items = await response.json();
+    // Get current items to preserve other fields
+    const res = await fetch("/api/admin/menu");
+    const items = await res.json();
     const item = items.find(i => i.id === id);
     if (!item) return;
 
-    const updatedData = {
-        name: field === 'name' ? value : item.name,
-        price: field === 'price' ? parseFloat(value) : item.price,
-        active: field === 'active' ? (value === true || value === 1) : !!item.active,
-        max_limit: field === 'max_limit' ? (value === "" ? null : parseInt(value)) : item.max_limit,
-        category: field === 'category' ? (value === "" ? null : value) : item.category
+    // Build the update object carefully
+    const payload = {
+        name: item.name,
+        price: item.price,
+        active: !!item.active,
+        max_limit: item.max_limit,
+        category: item.category
     };
+
+    // Apply the change
+    if (field === 'name') payload.name = value;
+    if (field === 'price') payload.price = parseFloat(value);
+    if (field === 'active') payload.active = value;
+    if (field === 'max_limit') payload.max_limit = value === "" ? null : parseInt(value);
+    if (field === 'category') payload.category = value === "" ? null : value;
 
     await fetch(`/api/admin/menu/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updatedData)
+        body: JSON.stringify(payload)
     });
     loadAdminData();
 }
+
 
 async function deleteItem(id) {
     if (!confirm("Sicher löschen?")) return;

@@ -125,42 +125,43 @@ app.get("/admin", (req, res) => {
         <a href="/bestellen" class="button secondary">Zurück</a>
       </div>
     </header>
-    <div class="grid">
-      <div class="card">
-        <h2>Kategorien verwalten</h2>
-        <form id="add-category-form">
-          <input id="cat-name" type="text" placeholder="Kategoriename (z.B. Pizza)" required />
-          <input id="cat-limit" type="number" placeholder="Max Limit" />
-          <button type="submit">Kategorie hinzufügen</button>
-        </form>
-        <div id="admin-category-list" class="stats-table-container"></div>
-      </div>
-
-      <div class="card">
-        <h2>Neues Produkt hinzufügen</h2>
-
-        <form id="add-product-form">
-          <label for="new-name">Name</label>
-          <input id="new-name" type="text" required />
-          <label for="new-price">Preis (€)</label>
-          <input id="new-price" type="number" step="0.01" required />
-          <label for="new-limit">Max Limit (optional, 12:30-13:45)</label>
-          <input id="new-limit" type="number" step="1" />
-          <label for="new-category">Kategorie</label>
-          <select id="new-category">
-            <option value="">Keine</option>
-            <!-- Categories will be added here by JS -->
-          </select>
-          <button type="submit">Hinzufügen</button>
-
-        </form>
-      </div>
-
-      <div class="card">
+    <div class="admin-container">
+      <div class="card full-width">
         <h2>Produktliste</h2>
         <div id="admin-menu-list"></div>
       </div>
+
+      <div class="grid">
+        <div class="card">
+          <h2>Kategorien verwalten</h2>
+          <form id="add-category-form">
+            <input id="cat-name" type="text" placeholder="Kategoriename (z.B. Pizza)" required />
+            <input id="cat-limit" type="number" placeholder="Max Limit" />
+            <button type="submit">Kategorie hinzufügen</button>
+          </form>
+          <div id="admin-category-list" class="stats-table-container"></div>
+        </div>
+
+        <div class="card">
+          <h2>Neues Produkt hinzufügen</h2>
+          <form id="add-product-form">
+            <label for="new-name">Name</label>
+            <input id="new-name" type="text" required />
+            <label for="new-price">Preis (€)</label>
+            <input id="new-price" type="number" step="0.01" required />
+            <label for="new-limit">Max Limit (optional, 12:30-13:45)</label>
+            <input id="new-limit" type="number" step="1" />
+            <label for="new-category">Kategorie</label>
+            <select id="new-category">
+              <option value="">Keine</option>
+              <!-- Categories will be added here by JS -->
+            </select>
+            <button type="submit">Hinzufügen</button>
+          </form>
+        </div>
+      </div>
     </div>
+
   `;
   res.send(renderPage({ 
     title: "Admin - Produkte", 

@@ -41,6 +41,24 @@ body {
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
 }
 
+.admin-container {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+.full-width {
+  width: 100%;
+}
+
+.full-width h2 {
+  border-bottom: 2px solid #eef1f8;
+  padding-bottom: 12px;
+  margin-bottom: 24px;
+}
+
+
+
 label {
   display: block;
   font-weight: 600;
@@ -233,6 +251,23 @@ button:hover,
 .menu-item input[type="number"] {
   width: 100%;
   margin-bottom: 0;
+}
+
+#menu.admin-container {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.full-width {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+  gap: 24px;
 }
 
 #menu {
