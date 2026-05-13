@@ -133,9 +133,14 @@ app.get("/admin", (req, res) => {
           <input id="new-name" type="text" required />
           <label for="new-price">Preis (€)</label>
           <input id="new-price" type="number" step="0.01" required />
+          <label for="new-limit">Max Limit (optional, 12:30-13:45)</label>
+          <input id="new-limit" type="number" step="1" />
+          <label for="new-category">Kategorie (für gemeinsames Limit, optional)</label>
+          <input id="new-category" type="text" placeholder="z.B. Pizza" />
           <button type="submit">Hinzufügen</button>
         </form>
       </div>
+
       <div class="card">
         <h2>Produktliste</h2>
         <div id="admin-menu-list"></div>
@@ -173,7 +178,38 @@ app.get("/tv", (req, res) => {
 });
 
 
+app.get("/statistik", (req, res) => {
+  if (!req.session?.isAuthenticated) {
+    res.redirect("/bestellen");
+    return;
+  }
+  const body = `
+    <header class="page-header">
+      <h1>Statistik</h1>
+      <div class="header-actions">
+        <a href="/bestellen" class="button secondary">Zurück</a>
+      </div>
+    </header>
+    <div class="grid">
+      <div class="card">
+        <h2>Übersicht Heute</h2>
+        <div id="stats-today"></div>
+      </div>
+      <div class="card">
+        <h2>Gesamtstatistik</h2>
+        <div id="stats-total"></div>
+      </div>
+    </div>
+  `;
+  res.send(renderPage({ 
+    title: "Statistik", 
+    body, 
+    scripts: ["/public/stats.js"] 
+  }));
+});
+
 app.get("/bestellen", (req, res) => {
+
   if (!req.session?.isAuthenticated) {
     const body = `
       <header class="page-header">
@@ -197,8 +233,10 @@ app.get("/bestellen", (req, res) => {
       <div class="header-actions">
         <a href="/"><button type="button">Zur Startseite</button></a>
         <a href="/admin"><button type="button" class="secondary">Produkte bearbeiten</button></a>
+        <a href="/statistik"><button type="button" class="secondary">Statistik</button></a>
       </div>
     </header>
+
 
     <section class="grid">
       <div class="card">
@@ -303,14 +341,58 @@ app.post("/api/admin/menu", async (req, res) => {
 
 app.put("/api/admin/menu/:id", async (req, res) => {
   if (!req.session?.isAuthenticated) return res.status(401).send();
-  const { name, price, active } = req.body;
+  const { name, price, active, max_limit, category } = req.body;
   try {
-    await db.updateMenuItem(req.params.id, name, price, active);
+    await db.updateMenuItem(req.params.id, name, price, active, max_limit, category);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
+
+app.get("/api/stats", async (req, res) => {
+  if (!req.session?.isAuthenticated) return res.status(401).send();
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const todayStats = await db.getOrderStats(today);
+    const totalStats = await db.getOrderStats();
+    res.json({ today: todayStats, total: totalStats });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/limits", async (req, res) => {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const todayStats = await db.getOrderStats(today);
+    const menu = await db.getMenuItems(true);
+    
+    const results = menu.map(item => {
+      const usage = todayStats[item.name] || 0;
+      return {
+        name: item.name,
+        category: item.category,
+        max_limit: item.max_limit,
+        current_usage: usage
+      };
+    });
+
+    // Also calculate category usage
+    const categoryUsage = {};
+    results.forEach(r => {
+      if (r.category) {
+        categoryUsage[r.category] = (categoryUsage[r.category] || 0) + r.current_usage;
+      }
+    });
+
+    res.json({ items: results, categories: categoryUsage });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 
 app.delete("/api/admin/menu/:id", async (req, res) => {
   if (!req.session?.isAuthenticated) return res.status(401).send();
@@ -352,6 +434,44 @@ app.get("/api/orders/:id/qr", async (req, res) => {
 
 app.post("/api/orders", async (req, res) => {
   const { items, customerName } = req.body;
+
+  // Limit check
+  const now = new Date();
+  const startLimit = new Date();
+  startLimit.setHours(12, 30, 0);
+  const endLimit = new Date();
+  endLimit.setHours(13, 45, 0);
+
+  if (now >= startLimit && now <= endLimit) {
+    const today = now.toISOString().split('T')[0];
+    const todayStats = await db.getOrderStats(today);
+    const menu = await db.getMenuItems(true);
+    
+    // Group by item name and category
+    const categoryUsage = {};
+    const itemUsage = {};
+    Object.keys(todayStats).forEach(name => {
+      const menuItem = menu.find(m => m.name === name);
+      if (menuItem) {
+        if (menuItem.category) {
+          categoryUsage[menuItem.category] = (categoryUsage[menuItem.category] || 0) + todayStats[name];
+        }
+        itemUsage[name] = (itemUsage[name] || 0) + todayStats[name];
+      }
+    });
+
+    // Check limits for new items
+    for (const item of items) {
+      const menuItem = menu.find(m => m.name === item.name);
+      if (menuItem && menuItem.max_limit) {
+        const currentQty = menuItem.category ? (categoryUsage[menuItem.category] || 0) : (itemUsage[item.name] || 0);
+        if (currentQty + item.qty > menuItem.max_limit) {
+          return res.status(400).json({ message: `Limit für ${menuItem.category || item.name} überschritten!` });
+        }
+      }
+    }
+  }
+
 
   if (!Array.isArray(items) || items.length === 0) {
     res.status(400).json({ message: "Keine Artikel" });

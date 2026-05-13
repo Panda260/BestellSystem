@@ -19,8 +19,11 @@ const initDb = () => {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
                 price REAL NOT NULL,
-                active INTEGER DEFAULT 1
+                active INTEGER DEFAULT 1,
+                max_limit INTEGER DEFAULT NULL,
+                category TEXT DEFAULT NULL
             )`, (err) => {
+
                 if (err) return reject(err);
                 
                 // Check if we need to seed
@@ -85,14 +88,18 @@ const addMenuItem = (name, price) => {
     });
 };
 
-const updateMenuItem = (id, name, price, active) => {
+const updateMenuItem = (id, name, price, active, max_limit, category) => {
     return new Promise((resolve, reject) => {
-        db.run("UPDATE menu_items SET name = ?, price = ?, active = ? WHERE id = ?", [name, price, active ? 1 : 0, id], function(err) {
-            if (err) reject(err);
-            else resolve();
-        });
+        db.run("UPDATE menu_items SET name = ?, price = ?, active = ?, max_limit = ?, category = ? WHERE id = ?", 
+            [name, price, active ? 1 : 0, max_limit, category, id], 
+            function(err) {
+                if (err) reject(err);
+                else resolve();
+            }
+        );
     });
 };
+
 
 const deleteMenuItem = (id) => {
     return new Promise((resolve, reject) => {
@@ -172,6 +179,30 @@ const getOrderById = (id) => {
     });
 };
 
+const getOrderStats = (date = null) => {
+    return new Promise((resolve, reject) => {
+        let query = "SELECT items, createdAt FROM orders";
+        let params = [];
+        if (date) {
+            query += " WHERE createdAt LIKE ?";
+            params.push(`${date}%`);
+        }
+        db.all(query, params, (err, rows) => {
+            if (err) reject(err);
+            else {
+                const stats = {};
+                rows.forEach(row => {
+                    const items = JSON.parse(row.items);
+                    items.forEach(item => {
+                        stats[item.name] = (stats[item.name] || 0) + item.qty;
+                    });
+                });
+                resolve(stats);
+            }
+        });
+    });
+};
+
 module.exports = {
     initDb,
     getMenuItems,
@@ -182,5 +213,7 @@ module.exports = {
     updateOrderCompleted,
     updateOrderItems,
     getAllOrders,
-    getOrderById
+    getOrderById,
+    getOrderStats
 };
+

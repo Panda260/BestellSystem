@@ -17,18 +17,40 @@ socket.on("orders:update", (orders) => {
 async function loadMenu() {
   const response = await fetch("/api/menu");
   menu = await response.json();
+  
+  const limitsResponse = await fetch("/api/limits");
+  const { items: itemLimits, categories: categoryLimits } = await limitsResponse.json();
+
+  const now = new Date();
+  const h = now.getHours();
+  const m = now.getMinutes();
+  const isInLimitWindow = (h === 12 && m >= 30) || (h === 13 && m <= 45);
+
   menuContainer.innerHTML = menu
     .map(
-      (item, index) => `
-      <div class="menu-item" onclick="toggleItem(${index})">
-        <input type="checkbox" id="item-${index}" data-index="${index}" onclick="event.stopPropagation(); updateTotal()" />
-        <label for="item-${index}">${item.name} (${item.price.toFixed(2)} €)</label>
-        <input type="number" id="qty-${index}" data-index="${index}" value="1" min="1" onclick="event.stopPropagation()" oninput="updateTotal()" />
-      </div>
-    `
+      (item, index) => {
+        const limitInfo = itemLimits.find(l => l.name === item.name);
+        let remaining = null;
+        if (limitInfo && limitInfo.max_limit && isInLimitWindow) {
+            const current = limitInfo.category ? (categoryLimits[limitInfo.category] || 0) : limitInfo.current_usage;
+            remaining = Math.max(0, limitInfo.max_limit - current);
+        }
+
+        return `
+          <div class="menu-item" onclick="toggleItem(${index})">
+            <input type="checkbox" id="item-${index}" data-index="${index}" onclick="event.stopPropagation(); updateTotal()" />
+            <label for="item-${index}">
+                ${item.name} (${item.price.toFixed(2)} €)
+                ${remaining !== null ? `<br><small class="limit-badge">Noch ${remaining} frei</small>` : ''}
+            </label>
+            <input type="number" id="qty-${index}" data-index="${index}" value="1" min="1" onclick="event.stopPropagation()" oninput="updateTotal()" />
+          </div>
+        `;
+      }
     )
     .join("");
 }
+
 
 window.toggleItem = (index) => {
   const checkbox = document.getElementById(`item-${index}`);

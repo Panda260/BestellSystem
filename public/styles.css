@@ -364,6 +364,31 @@ button:hover,
   font-size: 0.7rem;
 }
 
+/* Stats Styles */
+.stats-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.stats-table th, .stats-table td {
+  padding: 12px;
+  text-align: left;
+  border-bottom: 1px solid #eef1f8;
+}
+
+.stats-table th {
+  background: #f8fafc;
+  font-weight: 600;
+}
+
+/* Limit Badge */
+.limit-badge {
+  color: #ef4444;
+  font-weight: 600;
+  font-size: 0.8rem;
+}
+
+
 
 .qr-modal {
   position: fixed;
