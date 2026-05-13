@@ -4,6 +4,8 @@ const http = require("http");
 const path = require("path");
 const QRCode = require("qrcode");
 const { Server } = require("socket.io");
+const db = require("./database");
+
 
 const app = express();
 const server = http.createServer(app);
@@ -13,24 +15,9 @@ const PORT = process.env.PORT || 3000;
 const ORDER_PASSWORD = process.env.BESTELL_PASSWORD || "admin";
 const SESSION_SECRET = process.env.SESSION_SECRET || "bestellsystem-secret";
 
-const menuItems = [
-  { name: "Pizza Margherita", price: 2.0 },
-  { name: "Pizza Mozzarella", price: 2.50 },
-  { name: "Brezel", price: 10.0 },
-  { name: "Spezi", price: 1.0 },
-  { name: "Cola", price: 1.0 },
-  { name: "Fanta", price: 1.0 },
-  { name: "Sprite", price: 1.0 },
-  { name: "Apfelschorle", price: 1.0 },
-  { name: "Wassereis", price: 0.20 },
-  { name: "Kinderriegel", price: 0.30 },
-  { name: "Schokobrötchen", price: 0.30 },
-  { name: "Haribo", price: 0.10 },
-  { name: "Knoppers", price: 0.30 },
-
-];
-
+// Global orders Map for real-time tracking (synced with DB)
 const orders = new Map();
+
 
 app.use(express.json());
 app.use(
@@ -84,12 +71,16 @@ function serializeOrder(order) {
 }
 
 function broadcastOrders() {
-  const activeOrders = Array.from(orders.values())
-    .filter((order) => !order.completed)
+  const allActiveOrders = Array.from(orders.values())
     .map(serializeOrder);
-  io.to("kitchen").emit("orders:update", activeOrders);
-  io.to("staff").emit("orders:update", activeOrders);
+  
+  // Kitchen and Staff might only want non-completed, but TV needs both.
+  // We'll send everything and let the client decide.
+  io.to("kitchen").emit("orders:update", allActiveOrders.filter(o => !o.completed));
+  io.to("staff").emit("orders:update", allActiveOrders.filter(o => !o.completed));
+  io.to("tv").emit("orders:update", allActiveOrders);
 }
+
 
 function updateCustomer(order) {
   io.to(`order:${order.id}`).emit("order:update", serializeOrder(order));
@@ -120,6 +111,66 @@ app.get("/", (req, res) => {
   );
 });
 
+app.get("/admin", (req, res) => {
+  if (!req.session?.isAuthenticated) {
+    res.redirect("/bestellen");
+    return;
+  }
+  const body = `
+    <header class="page-header">
+      <h1>Produkte verwalten</h1>
+      <div class="header-actions">
+        <a href="/bestellen" class="button secondary">Zurück</a>
+      </div>
+    </header>
+    <div class="grid">
+      <div class="card">
+        <h2>Neues Produkt hinzufügen</h2>
+        <form id="add-product-form">
+          <label for="new-name">Name</label>
+          <input id="new-name" type="text" required />
+          <label for="new-price">Preis (€)</label>
+          <input id="new-price" type="number" step="0.01" required />
+          <button type="submit">Hinzufügen</button>
+        </form>
+      </div>
+      <div class="card">
+        <h2>Produktliste</h2>
+        <div id="admin-menu-list"></div>
+      </div>
+    </div>
+  `;
+  res.send(renderPage({ 
+    title: "Admin - Produkte", 
+    body, 
+    scripts: ["/public/admin.js"] 
+  }));
+});
+
+app.get("/tv", (req, res) => {
+  const body = `
+    <header class="page-header tv-header">
+      <h1>Bestellstatus</h1>
+    </header>
+    <div class="tv-grid">
+      <div class="tv-column">
+        <h2>In Arbeit</h2>
+        <div id="tv-pending" class="tv-list"></div>
+      </div>
+      <div class="tv-column">
+        <h2>Abholbereit</h2>
+        <div id="tv-ready" class="tv-list"></div>
+      </div>
+    </div>
+  `;
+  res.send(renderPage({ 
+    title: "BestellSystem TV", 
+    body, 
+    scripts: ["/public/tv.js"] 
+  }));
+});
+
+
 app.get("/bestellen", (req, res) => {
   if (!req.session?.isAuthenticated) {
     const body = `
@@ -141,12 +192,18 @@ app.get("/bestellen", (req, res) => {
     <header class="page-header">
       <h1>Bestellungen aufnehmen</h1>
       <p>Neue Bestellungen aufnehmen und bestehende Bestellungen bearbeiten.</p>
-      <a href="/"><button type="button">Zurück zur Startseite</button></a>
+      <div class="header-actions">
+        <a href="/"><button type="button">Zur Startseite</button></a>
+        <a href="/admin"><button type="button" class="secondary">Produkte bearbeiten</button></a>
+      </div>
     </header>
+
     <section class="grid">
       <div class="card">
         <h2>Neue Bestellung</h2>
         <form id="order-form">
+          <label for="customer-name">Name (optional)</label>
+          <input id="customer-name" name="customer-name" type="text" placeholder="Kundenname..." />
           <div id="menu"></div>
           <div class="total-row">
             <span>Gesamtpreis:</span>
@@ -154,6 +211,7 @@ app.get("/bestellen", (req, res) => {
           </div>
           <button type="submit">Bestellung aufgeben</button>
         </form>
+
         <div id="order-result" class="order-result"></div>
       </div>
       <div class="card">
@@ -211,9 +269,57 @@ app.get("/bestellungen", (req, res) => {
   );
 });
 
-app.get("/api/menu", (req, res) => {
-  res.json(menuItems);
+app.get("/api/menu", async (req, res) => {
+  try {
+    const items = await db.getMenuItems(true);
+    res.json(items);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
+
+app.get("/api/admin/menu", async (req, res) => {
+  if (!req.session?.isAuthenticated) return res.status(401).send();
+  try {
+    const items = await db.getMenuItems(false);
+    res.json(items);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/admin/menu", async (req, res) => {
+  if (!req.session?.isAuthenticated) return res.status(401).send();
+  const { name, price } = req.body;
+  try {
+    const id = await db.addMenuItem(name, price);
+    res.status(201).json({ id, name, price, active: 1 });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put("/api/admin/menu/:id", async (req, res) => {
+  if (!req.session?.isAuthenticated) return res.status(401).send();
+  const { name, price, active } = req.body;
+  try {
+    await db.updateMenuItem(req.params.id, name, price, active);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete("/api/admin/menu/:id", async (req, res) => {
+  if (!req.session?.isAuthenticated) return res.status(401).send();
+  try {
+    await db.deleteMenuItem(req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 app.get("/api/orders/:id", (req, res) => {
   const order = orders.get(req.params.id);
@@ -224,8 +330,27 @@ app.get("/api/orders/:id", (req, res) => {
   res.json(serializeOrder(order));
 });
 
+
+app.get("/api/orders/:id/qr", async (req, res) => {
+  const orderId = req.params.id;
+  const order = orders.get(orderId);
+  if (!order) {
+    res.status(404).json({ message: "Nicht gefunden" });
+    return;
+  }
+  const orderUrl = `${req.protocol}://${req.get("host")}/${orderId}`;
+  try {
+    const qrCodeDataUrl = await QRCode.toDataURL(orderUrl);
+    res.json({ qrCodeDataUrl });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 app.post("/api/orders", async (req, res) => {
-  const { items } = req.body;
+  const { items, customerName } = req.body;
+
   if (!Array.isArray(items) || items.length === 0) {
     res.status(400).json({ message: "Keine Artikel" });
     return;
@@ -248,11 +373,13 @@ app.post("/api/orders", async (req, res) => {
     id,
     items: orderItems,
     total: Number(total.toFixed(2)),
+    customerName: customerName || null,
     createdAt: new Date().toISOString(),
     completed: false
   };
 
   orders.set(id, order);
+  await db.saveOrder(order);
   broadcastOrders();
   updateCustomer(order);
 
@@ -266,7 +393,8 @@ app.post("/api/orders", async (req, res) => {
   });
 });
 
-app.post("/api/orders/:id/items/:index/toggle", (req, res) => {
+
+app.post("/api/orders/:id/items/:index/toggle", async (req, res) => {
   const order = orders.get(req.params.id);
   if (!order) {
     res.status(404).json({ message: "Nicht gefunden" });
@@ -282,13 +410,17 @@ app.post("/api/orders/:id/items/:index/toggle", (req, res) => {
 
   if (order.completed) {
     order.completedAt = new Date().toISOString();
+  } else {
+    order.completedAt = null;
   }
 
+  await db.updateOrderItems(order.id, order.items, order.completed, order.completedAt);
   broadcastOrders();
   updateCustomer(order);
 
   res.json(serializeOrder(order));
 });
+
 
 app.get("/:orderId", (req, res, next) => {
   if (!/^\d{3}$/.test(req.params.orderId)) {
@@ -338,7 +470,13 @@ io.on("connection", (socket) => {
       broadcastOrders();
       return;
     }
+    if (role === "tv") {
+      socket.join("tv");
+      broadcastOrders();
+      return;
+    }
     if (role === "order" && orderId) {
+
       socket.join(`order:${orderId}`);
       const order = orders.get(orderId);
       if (order) {
@@ -348,6 +486,14 @@ io.on("connection", (socket) => {
   });
 });
 
-server.listen(PORT, () => {
-  console.log(`BestellSystem läuft auf http://localhost:${PORT}`);
+server.listen(PORT, async () => {
+  try {
+    await db.initDb();
+    const openOrders = await db.getAllOrders(true);
+    openOrders.forEach(o => orders.set(o.id, o));
+    console.log(`BestellSystem läuft auf http://localhost:${PORT}`);
+  } catch (err) {
+    console.error("Fehler beim Starten der Datenbank:", err);
+  }
 });
+
