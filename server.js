@@ -67,7 +67,8 @@ function serializeOrder(order) {
     total: order.total,
     customerName: order.customerName,
     createdAt: order.createdAt,
-    completed: order.completed
+    completed: order.completed,
+    inOven: !!order.inOven
   };
 }
 
@@ -594,7 +595,8 @@ app.post("/api/orders", async (req, res) => {
     total: Number(total.toFixed(2)),
     customerName: customerName || null,
     createdAt: new Date().toISOString(),
-    completed: false
+    completed: false,
+    inOven: false
   };
 
   orders.set(id, order);
@@ -634,6 +636,21 @@ app.post("/api/orders/:id/items/:index/toggle", async (req, res) => {
   }
 
   await db.updateOrderItems(order.id, order.items, order.completed, order.completedAt);
+  broadcastOrders();
+  updateCustomer(order);
+
+  res.json(serializeOrder(order));
+});
+
+app.post("/api/orders/:id/toggle-oven", async (req, res) => {
+  const order = orders.get(req.params.id);
+  if (!order) {
+    res.status(404).json({ message: "Nicht gefunden" });
+    return;
+  }
+  order.inOven = !order.inOven;
+
+  await db.updateOrderOven(order.id, order.inOven);
   broadcastOrders();
   updateCustomer(order);
 

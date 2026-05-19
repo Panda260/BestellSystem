@@ -173,7 +173,16 @@ function renderStaffOrders(orders) {
       (order) => `
       <div class="order-card">
         <div class="order-card-header">
-          <h3>Bestellung #${order.id} ${order.customerName ? `(${order.customerName})` : ""}</h3>
+          <h3>
+            Bestellung #${order.id} ${order.customerName ? `(${order.customerName})` : ""}
+            <span class="oven-status ${order.inOven ? 'in-oven' : 'not-in-oven'}">
+              ${order.inOven ? 'Im Ofen' : 'Nicht im Ofen'}
+            </span>
+            <label class="switch">
+              <input type="checkbox" ${order.inOven ? 'checked' : ''} onchange="toggleOven('${order.id}')">
+              <span class="slider round"></span>
+            </label>
+          </h3>
           <button class="qr-small-btn" onclick="showSpecificQR('${order.id}')">QR</button>
         </div>
         <ul class="status-list">
@@ -196,7 +205,7 @@ function renderStaffOrders(orders) {
     )
     .join("");
 
-  staffOrders.querySelectorAll("button").forEach((button) => {
+  staffOrders.querySelectorAll(".status-list li button").forEach((button) => {
     button.addEventListener("click", async () => {
       const orderId = button.dataset.order;
       const index = button.dataset.index;
@@ -204,6 +213,10 @@ function renderStaffOrders(orders) {
     });
   });
 }
+
+window.toggleOven = async (orderId) => {
+  await fetch(`/api/orders/${orderId}/toggle-oven`, { method: "POST" });
+};
 
 loadMenu();
 updateTotal();

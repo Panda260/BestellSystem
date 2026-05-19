@@ -55,7 +55,23 @@ const initDb = () => {
                 completedAt TEXT
             )`, (err) => {
                 if (err) return reject(err);
-                resolve();
+                
+                // Migration: add inOven column if it doesn't exist
+                db.all("PRAGMA table_info(orders)", (err, columns) => {
+                    if (!err && columns) {
+                        const hasInOven = columns.some(c => c.name === 'inOven');
+                        if (!hasInOven) {
+                            db.run("ALTER TABLE orders ADD COLUMN inOven INTEGER DEFAULT 0", (alterErr) => {
+                                if (alterErr) return reject(alterErr);
+                                resolve();
+                            });
+                        } else {
+                            resolve();
+                        }
+                    } else {
+                        resolve();
+                    }
+                });
             });
         });
     });
@@ -105,8 +121,8 @@ const deleteMenuItem = (id) => {
 
 const saveOrder = (order) => {
     return new Promise((resolve, reject) => {
-        db.run("INSERT INTO orders (id, items, total, customerName, createdAt, completed) VALUES (?, ?, ?, ?, ?, ?)", 
-            [order.id, JSON.stringify(order.items), order.total, order.customerName, order.createdAt, order.completed ? 1 : 0], 
+        db.run("INSERT INTO orders (id, items, total, customerName, createdAt, completed, inOven) VALUES (?, ?, ?, ?, ?, ?, ?)", 
+            [order.id, JSON.stringify(order.items), order.total, order.customerName, order.createdAt, order.completed ? 1 : 0, order.inOven ? 1 : 0], 
             function(err) {
                 if (err) reject(err);
                 else resolve();
@@ -140,6 +156,18 @@ const updateOrderItems = (id, items, completed, completedAt) => {
     });
 };
 
+const updateOrderOven = (id, inOven) => {
+    return new Promise((resolve, reject) => {
+        db.run("UPDATE orders SET inOven = ? WHERE id = ?", 
+            [inOven ? 1 : 0, id], 
+            function(err) {
+                if (err) reject(err);
+                else resolve();
+            }
+        );
+    });
+};
+
 const getAllOrders = (onlyOpen = true) => {
     return new Promise((resolve, reject) => {
         const query = onlyOpen ? "SELECT * FROM orders WHERE completed = 0" : "SELECT * FROM orders";
@@ -149,7 +177,8 @@ const getAllOrders = (onlyOpen = true) => {
                 resolve(rows.map(row => ({
                     ...row,
                     items: JSON.parse(row.items),
-                    completed: !!row.completed
+                    completed: !!row.completed,
+                    inOven: !!row.inOven
                 })));
             }
         });
@@ -165,7 +194,8 @@ const getOrderById = (id) => {
                 resolve({
                     ...row,
                     items: JSON.parse(row.items),
-                    completed: !!row.completed
+                    completed: !!row.completed,
+                    inOven: !!row.inOven
                 });
             }
         });
@@ -251,6 +281,7 @@ module.exports = {
     saveOrder,
     updateOrderCompleted,
     updateOrderItems,
+    updateOrderOven,
     getAllOrders,
     getOrderById,
     getOrderStats,

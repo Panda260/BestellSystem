@@ -33,8 +33,15 @@ function renderStatus(order) {
   }
 
   const allDone = order.completed;
+  const ovenStatusHtml = allDone 
+    ? '' 
+    : `<div class="status-banner ${order.inOven ? 'in-oven' : 'not-in-oven'}">
+        Status: ${order.inOven ? 'Im Ofen' : 'Nicht im Ofen'}
+       </div>`;
+
   statusEl.innerHTML = `
     <h2>${allDone ? "Deine Bestellung ist fertig!" : "Bestellung in Bearbeitung"}</h2>
+    ${ovenStatusHtml}
     <p>Gesamt: <strong>${order.total.toFixed(2)} €</strong></p>
     <ul class="status-list">
       ${order.items

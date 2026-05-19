@@ -17,13 +17,16 @@ function renderTV(orders) {
         <div class="tv-item pending">
             <span class="tv-id">#${o.id}</span>
             <span class="tv-name">${o.customerName || ''}</span>
+            <span class="tv-oven-status ${o.inOven ? 'in-oven' : 'not-in-oven'}">
+                ${o.inOven ? 'Im Ofen' : 'Nicht im Ofen'}
+            </span>
         </div>
     `).join("");
 
     readyEl.innerHTML = ready.map(o => `
         <div class="tv-item ready">
             <span class="tv-id">#${o.id}</span>
-            <span class="tv-name">${o.customerName || ''}</span>
+            <span class="tv-pickup">${o.customerName || 'Bestellung Abholen'}</span>
         </div>
     `).join("");
 }

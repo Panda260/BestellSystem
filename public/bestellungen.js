@@ -13,7 +13,12 @@ socket.on("orders:update", (orders) => {
     .map(
       (order) => `
       <div class="order-card">
-        <h3>Bestellung #${order.id} ${order.customerName ? `(${order.customerName})` : ""}</h3>
+        <h3>
+          Bestellung #${order.id} ${order.customerName ? `(${order.customerName})` : ""}
+          <span class="oven-status ${order.inOven ? 'in-oven' : 'not-in-oven'}">
+            ${order.inOven ? 'Im Ofen' : 'Nicht im Ofen'}
+          </span>
+        </h3>
 
         <ul class="status-list">
           ${order.items
