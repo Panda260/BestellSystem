@@ -261,8 +261,8 @@ app.get("/bestellen", (req, res) => {
       <div class="card">
         <h2>Neue Bestellung</h2>
         <form id="order-form">
-          <label for="customer-name">Name (optional)</label>
-          <input id="customer-name" name="customer-name" type="text" placeholder="Kundenname..." />
+          <label for="customer-name">Name</label>
+          <input id="customer-name" name="customer-name" type="text" placeholder="Kundenname..." required />
           <div id="menu"></div>
           <div class="total-row">
             <span>Gesamtpreis:</span>
@@ -563,6 +563,11 @@ app.post("/api/orders", async (req, res) => {
   }
 
 
+
+  if (!customerName || typeof customerName !== 'string' || customerName.trim() === '') {
+    res.status(400).json({ message: "Name ist erforderlich" });
+    return;
+  }
 
   if (!Array.isArray(items) || items.length === 0) {
     res.status(400).json({ message: "Keine Artikel" });

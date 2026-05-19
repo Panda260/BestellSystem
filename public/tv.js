@@ -15,7 +15,6 @@ function renderTV(orders) {
     
     pendingEl.innerHTML = pending.map(o => `
         <div class="tv-item pending">
-            <span class="tv-id">#${o.id}</span>
             <span class="tv-name">${o.customerName || ''}</span>
             <span class="tv-oven-status ${o.inOven ? 'in-oven' : 'not-in-oven'}">
                 ${o.inOven ? 'Im Ofen' : 'Nicht im Ofen'}
@@ -24,7 +23,7 @@ function renderTV(orders) {
     `).join("");
 
     readyEl.innerHTML = ready.map(o => {
-        const name = o.customerName || `#${o.id}`;
+        const name = o.customerName || '';
         let fontSize = '1.8rem';
         if (name.length > 25) {
             fontSize = '1.1rem';
