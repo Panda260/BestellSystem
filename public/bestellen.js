@@ -36,6 +36,8 @@ async function loadMenu() {
             remaining = Math.max(0, limitInfo.max_limit - current);
         }
 
+        const qtyOptions = Array.from({ length: 15 }, (_, i) => `<option value="${i + 1}">${i + 1}</option>`).join("");
+
         return `
           <div class="menu-item" onclick="toggleItem(${index})">
             <input type="checkbox" id="item-${index}" data-index="${index}" onclick="event.stopPropagation(); updateTotal()" />
@@ -43,7 +45,9 @@ async function loadMenu() {
                 ${item.name} (${item.price.toFixed(2)} €)
                 ${remaining !== null ? `<br><small class="limit-badge">Noch ${remaining} frei</small>` : ''}
             </label>
-            <input type="number" id="qty-${index}" data-index="${index}" value="1" min="1" onclick="event.stopPropagation()" oninput="updateTotal()" />
+            <select id="qty-${index}" data-index="${index}" onclick="event.stopPropagation()" onchange="changeQty(${index})">
+              ${qtyOptions}
+            </select>
           </div>
         `;
       }
@@ -55,6 +59,12 @@ async function loadMenu() {
 window.toggleItem = (index) => {
   const checkbox = document.getElementById(`item-${index}`);
   checkbox.checked = !checkbox.checked;
+  updateTotal();
+};
+
+window.changeQty = (index) => {
+  const checkbox = document.getElementById(`item-${index}`);
+  checkbox.checked = true;
   updateTotal();
 };
 

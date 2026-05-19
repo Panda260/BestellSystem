@@ -248,9 +248,32 @@ button:hover,
   padding-right: 24px;
 }
 
-.menu-item input[type="number"] {
+.menu-item select {
   width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid #cbd5f5;
+  background-color: #fff;
+  font-size: 1rem;
+  font-family: inherit;
+  cursor: pointer;
   margin-bottom: 0;
+  height: 44px;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%233b63f6' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 16px;
+  padding-right: 36px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.menu-item select:focus {
+  outline: none;
+  border-color: #3b63f6;
+  box-shadow: 0 0 0 3px rgba(59, 99, 246, 0.15);
 }
 
 #menu.admin-container {
