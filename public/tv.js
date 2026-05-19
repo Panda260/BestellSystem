@@ -23,9 +23,21 @@ function renderTV(orders) {
         </div>
     `).join("");
 
-    readyEl.innerHTML = ready.map(o => `
-        <div class="tv-item ready">
-            <span class="tv-pickup">${o.customerName || 'Bestellung Abholen'}</span>
-        </div>
-    `).join("");
+    readyEl.innerHTML = ready.map(o => {
+        const name = o.customerName || `#${o.id}`;
+        let fontSize = '1.8rem';
+        if (name.length > 25) {
+            fontSize = '1.1rem';
+        } else if (name.length > 18) {
+            fontSize = '1.3rem';
+        } else if (name.length > 12) {
+            fontSize = '1.5rem';
+        }
+        return `
+            <div class="tv-item ready" style="font-size: ${fontSize};">
+                <span class="tv-name">${name}</span>
+                <span class="tv-pickup">Bestellung Abholen</span>
+            </div>
+        `;
+    }).join("");
 }

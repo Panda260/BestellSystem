@@ -645,13 +645,27 @@ input:checked + .slider:before {
   border: 2px solid #f87171;
 }
 
-/* Centered pickup text in green card */
+/* Left/right layout for ready cards in TV view */
 .tv-item.ready {
-  justify-content: center;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+}
+
+.tv-item.ready .tv-name {
+  font-weight: 700;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .tv-item.ready .tv-pickup {
-  font-size: 1.8rem;
   font-weight: 800;
   color: #166534;
+  text-align: right;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
