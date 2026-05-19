@@ -4,12 +4,13 @@ const kitchenOrders = document.getElementById("kitchen-orders");
 socket.emit("join", { role: "kitchen" });
 
 socket.on("orders:update", (orders) => {
-  if (!orders.length) {
+  const sortedOrders = [...orders].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+  if (!sortedOrders.length) {
     kitchenOrders.innerHTML = "<p class=\"hint\">Keine offenen Bestellungen.</p>";
     return;
   }
 
-  kitchenOrders.innerHTML = orders
+  kitchenOrders.innerHTML = sortedOrders
     .map(
       (order) => `
       <div class="order-card">

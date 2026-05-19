@@ -163,12 +163,13 @@ window.showSpecificQR = async (orderId) => {
 
 
 function renderStaffOrders(orders) {
-  if (!orders.length) {
+  const sortedOrders = [...orders].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+  if (!sortedOrders.length) {
     staffOrders.innerHTML = "<p class=\"hint\">Keine offenen Bestellungen.</p>";
     return;
   }
 
-  staffOrders.innerHTML = orders
+  staffOrders.innerHTML = sortedOrders
     .map(
       (order) => `
       <div class="order-card">

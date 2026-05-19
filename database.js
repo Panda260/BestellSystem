@@ -170,7 +170,7 @@ const updateOrderOven = (id, inOven) => {
 
 const getAllOrders = (onlyOpen = true) => {
     return new Promise((resolve, reject) => {
-        const query = onlyOpen ? "SELECT * FROM orders WHERE completed = 0" : "SELECT * FROM orders";
+        const query = onlyOpen ? "SELECT * FROM orders WHERE completed = 0 ORDER BY createdAt ASC" : "SELECT * FROM orders ORDER BY createdAt ASC";
         db.all(query, (err, rows) => {
             if (err) reject(err);
             else {
