@@ -1,9 +1,8 @@
-async function loadStats() {
+async function loadLifetimeStats() {
     const response = await fetch("/api/stats");
-    const { today, total } = await response.json();
+    const { lifetime } = await response.json();
     
-    renderStats("stats-today", today);
-    renderStats("stats-total", total);
+    renderStats("stats-lifetime", lifetime || {});
 }
 
 function renderStats(elementId, stats) {
@@ -11,7 +10,7 @@ function renderStats(elementId, stats) {
     const sorted = Object.entries(stats).sort((a, b) => b[1] - a[1]);
     
     if (sorted.length === 0) {
-        el.innerHTML = "<p class='hint'>Noch keine Bestellungen.</p>";
+        el.innerHTML = "<p class='hint'>Noch keine Bestellungen verzeichnet.</p>";
         return;
     }
     
@@ -20,7 +19,7 @@ function renderStats(elementId, stats) {
             <thead>
                 <tr>
                     <th>Produkt</th>
-                    <th>Anzahl</th>
+                    <th>Lifetime Anzahl</th>
                 </tr>
             </thead>
             <tbody>
@@ -35,14 +34,4 @@ function renderStats(elementId, stats) {
     `;
 }
 
-document.getElementById("reset-stats-btn").addEventListener("click", async () => {
-    if (!confirm("Bist du sicher? Alle Bestellungen und Statistiken werden unwiderruflich gelöscht!")) return;
-    
-    const response = await fetch("/api/stats", { method: "DELETE" });
-    if (response.ok) {
-        loadStats();
-    }
-});
-
-loadStats();
-
+loadLifetimeStats();

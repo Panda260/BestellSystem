@@ -205,7 +205,7 @@ app.get("/statistik", (req, res) => {
       <h1>Statistik</h1>
       <div class="header-actions">
         <a href="/bestellen" class="button secondary">Zurück</a>
-        <button id="toggle-lifetime-btn" class="button secondary">Lifetime-Statistik anzeigen</button>
+        <a href="/statistik-lifetime" class="button secondary">Lifetime-Statistik</a>
         <button id="reset-stats-btn" class="button danger">Statistik zurücksetzen</button>
       </div>
     </header>
@@ -219,16 +219,39 @@ app.get("/statistik", (req, res) => {
         <h2>Gesamtstatistik</h2>
         <div id="stats-total"></div>
       </div>
-      <div class="card" id="lifetime-card" style="display: none;">
-        <h2>Lifetime-Statistik</h2>
-        <div id="stats-lifetime"></div>
-      </div>
     </div>
   `;
   res.send(renderPage({ 
     title: "Statistik", 
     body, 
     scripts: ["/public/stats.js"] 
+  }));
+});
+
+app.get("/statistik-lifetime", (req, res) => {
+  if (!req.session?.isAuthenticated) {
+    res.redirect("/bestellen");
+    return;
+  }
+  const body = `
+    <header class="page-header">
+      <h1>Lifetime-Statistik</h1>
+      <div class="header-actions">
+        <a href="/statistik" class="button secondary">Zurück</a>
+      </div>
+    </header>
+
+    <div class="grid">
+      <div class="card full-width">
+        <h2>Lifetime-Statistik (nicht löschbar)</h2>
+        <div id="stats-lifetime"></div>
+      </div>
+    </div>
+  `;
+  res.send(renderPage({ 
+    title: "Lifetime-Statistik", 
+    body, 
+    scripts: ["/public/stats-lifetime.js"] 
   }));
 });
 
