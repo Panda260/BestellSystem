@@ -58,18 +58,61 @@ const initDb = () => {
                 
                 // Migration: add inOven column if it doesn't exist
                 db.all("PRAGMA table_info(orders)", (err, columns) => {
+                    const nextStep = () => {
+                        // Create lifetime_stats table and resolve/reject
+                        db.run(`CREATE TABLE IF NOT EXISTS lifetime_stats (
+                            item_name TEXT PRIMARY KEY,
+                            qty INTEGER DEFAULT 0
+                        )`, (err2) => {
+                            if (err2) return reject(err2);
+                            
+                            // If lifetime_stats is empty, populate from orders
+                            db.get("SELECT COUNT(*) as count FROM lifetime_stats", (err3, row) => {
+                                if (!err3 && row && row.count === 0) {
+                                    db.all("SELECT items FROM orders", (err4, orderRows) => {
+                                        if (!err4 && orderRows && orderRows.length > 0) {
+                                            const initialCounts = {};
+                                            orderRows.forEach(or => {
+                                                try {
+                                                    const items = JSON.parse(or.items);
+                                                    items.forEach(item => {
+                                                        initialCounts[item.name] = (initialCounts[item.name] || 0) + 1;
+                                                    });
+                                                } catch (e) {}
+                                            });
+                                            db.serialize(() => {
+                                                const stmt = db.prepare("INSERT INTO lifetime_stats (item_name, qty) VALUES (?, ?)");
+                                                Object.entries(initialCounts).forEach(([name, qty]) => {
+                                                    stmt.run(name, qty);
+                                                });
+                                                stmt.finalize((err5) => {
+                                                    if (err5) reject(err5);
+                                                    else resolve();
+                                                });
+                                            });
+                                        } else {
+                                            resolve();
+                                        }
+                                    });
+                                } else {
+                                    resolve();
+                                }
+                            });
+                        });
+                    };
+
                     if (!err && columns) {
                         const hasInOven = columns.some(c => c.name === 'inOven');
                         if (!hasInOven) {
                             db.run("ALTER TABLE orders ADD COLUMN inOven INTEGER DEFAULT 0", (alterErr) => {
                                 if (alterErr) return reject(alterErr);
-                                resolve();
+                                nextStep();
                             });
                         } else {
-                            resolve();
+                            nextStep();
                         }
                     } else {
-                        resolve();
+                        nextStep();
                     }
                 });
             });
@@ -121,13 +164,30 @@ const deleteMenuItem = (id) => {
 
 const saveOrder = (order) => {
     return new Promise((resolve, reject) => {
-        db.run("INSERT INTO orders (id, items, total, customerName, createdAt, completed, inOven) VALUES (?, ?, ?, ?, ?, ?, ?)", 
-            [order.id, JSON.stringify(order.items), order.total, order.customerName, order.createdAt, order.completed ? 1 : 0, order.inOven ? 1 : 0], 
-            function(err) {
-                if (err) reject(err);
-                else resolve();
-            }
-        );
+        db.serialize(() => {
+            db.run("INSERT INTO orders (id, items, total, customerName, createdAt, completed, inOven) VALUES (?, ?, ?, ?, ?, ?, ?)", 
+                [order.id, JSON.stringify(order.items), order.total, order.customerName, order.createdAt, order.completed ? 1 : 0, order.inOven ? 1 : 0], 
+                function(err) {
+                    if (err) {
+                        reject(err);
+                        return;
+                    }
+                    
+                    // Increment lifetime counts
+                    const stmt = db.prepare(`
+                        INSERT INTO lifetime_stats (item_name, qty) VALUES (?, 1)
+                        ON CONFLICT(item_name) DO UPDATE SET qty = qty + 1
+                    `);
+                    order.items.forEach(item => {
+                        stmt.run(item.name);
+                    });
+                    stmt.finalize((err2) => {
+                        if (err2) reject(err2);
+                        else resolve();
+                    });
+                }
+            );
+        });
     });
 };
 
@@ -262,6 +322,22 @@ const deleteCategory = (name) => {
     });
 };
 
+const getLifetimeStats = () => {
+    return new Promise((resolve, reject) => {
+        db.all("SELECT item_name, qty FROM lifetime_stats", (err, rows) => {
+            if (err) {
+                reject(err);
+            } else {
+                const stats = {};
+                rows.forEach(row => {
+                    stats[row.item_name] = row.qty;
+                });
+                resolve(stats);
+            }
+        });
+    });
+};
+
 const resetStats = () => {
 
     return new Promise((resolve, reject) => {
@@ -285,6 +361,7 @@ module.exports = {
     getAllOrders,
     getOrderById,
     getOrderStats,
+    getLifetimeStats,
     getCategories,
     addCategory,
     updateCategory,

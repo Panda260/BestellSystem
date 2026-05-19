@@ -205,6 +205,7 @@ app.get("/statistik", (req, res) => {
       <h1>Statistik</h1>
       <div class="header-actions">
         <a href="/bestellen" class="button secondary">Zurück</a>
+        <button id="toggle-lifetime-btn" class="button secondary">Lifetime-Statistik anzeigen</button>
         <button id="reset-stats-btn" class="button danger">Statistik zurücksetzen</button>
       </div>
     </header>
@@ -217,6 +218,10 @@ app.get("/statistik", (req, res) => {
       <div class="card">
         <h2>Gesamtstatistik</h2>
         <div id="stats-total"></div>
+      </div>
+      <div class="card" id="lifetime-card" style="display: none;">
+        <h2>Lifetime-Statistik</h2>
+        <div id="stats-lifetime"></div>
       </div>
     </div>
   `;
@@ -418,7 +423,8 @@ app.get("/api/stats", async (req, res) => {
     const today = new Date().toISOString().split('T')[0];
     const todayStats = await db.getOrderStats(today);
     const totalStats = await db.getOrderStats();
-    res.json({ today: todayStats, total: totalStats });
+    const lifetimeStats = await db.getLifetimeStats();
+    res.json({ today: todayStats, total: totalStats, lifetime: lifetimeStats });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
