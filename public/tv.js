@@ -25,7 +25,6 @@ function renderTV(orders) {
 
     readyEl.innerHTML = ready.map(o => `
         <div class="tv-item ready">
-            <span class="tv-id">#${o.id}</span>
             <span class="tv-pickup">${o.customerName || 'Bestellung Abholen'}</span>
         </div>
     `).join("");
