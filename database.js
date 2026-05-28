@@ -54,7 +54,8 @@ const initDb = () => {
                 completed INTEGER DEFAULT 0,
                 completedAt TEXT,
                 pickedUp INTEGER DEFAULT 0,
-                pickedUpAt TEXT
+                pickedUpAt TEXT,
+                historyCleared INTEGER DEFAULT 0
             )`, (err) => {
                 if (err) return reject(err);
                 
@@ -107,11 +108,13 @@ const initDb = () => {
                         const hasInOven = columns.some(c => c.name === 'inOven');
                         const hasPickedUp = columns.some(c => c.name === 'pickedUp');
                         const hasPickedUpAt = columns.some(c => c.name === 'pickedUpAt');
+                        const hasHistoryCleared = columns.some(c => c.name === 'historyCleared');
                         
                         db.serialize(() => {
                             if (!hasInOven) db.run("ALTER TABLE orders ADD COLUMN inOven INTEGER DEFAULT 0");
                             if (!hasPickedUp) db.run("ALTER TABLE orders ADD COLUMN pickedUp INTEGER DEFAULT 0");
                             if (!hasPickedUpAt) db.run("ALTER TABLE orders ADD COLUMN pickedUpAt TEXT");
+                            if (!hasHistoryCleared) db.run("ALTER TABLE orders ADD COLUMN historyCleared INTEGER DEFAULT 0");
                         });
                         // Allow migrations to finish
                         setTimeout(nextStep, 100);
@@ -169,8 +172,8 @@ const deleteMenuItem = (id) => {
 const saveOrder = (order) => {
     return new Promise((resolve, reject) => {
         db.serialize(() => {
-            db.run("INSERT INTO orders (id, items, total, customerName, createdAt, completed, inOven, pickedUp, pickedUpAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", 
-                [order.id, JSON.stringify(order.items), order.total, order.customerName, order.createdAt, order.completed ? 1 : 0, order.inOven ? 1 : 0, order.pickedUp ? 1 : 0, order.pickedUpAt || null], 
+            db.run("INSERT INTO orders (id, items, total, customerName, createdAt, completed, inOven, pickedUp, pickedUpAt, historyCleared) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 
+                [order.id, JSON.stringify(order.items), order.total, order.customerName, order.createdAt, order.completed ? 1 : 0, order.inOven ? 1 : 0, order.pickedUp ? 1 : 0, order.pickedUpAt || null, 0], 
                 function(err) {
                     if (err) {
                         reject(err);
@@ -285,7 +288,7 @@ const getOrderById = (id) => {
 
 const getPickedUpOrders = (date = null) => {
     return new Promise((resolve, reject) => {
-        let query = "SELECT * FROM orders WHERE pickedUp = 1";
+        let query = "SELECT * FROM orders WHERE pickedUp = 1 AND historyCleared = 0";
         let params = [];
         if (date) {
             query += " AND pickedUpAt LIKE ?";
@@ -396,7 +399,7 @@ const resetStats = () => {
 
 const clearHistory = () => {
     return new Promise((resolve, reject) => {
-        db.run("DELETE FROM orders WHERE pickedUp = 1", (err) => {
+        db.run("UPDATE orders SET historyCleared = 1 WHERE pickedUp = 1", (err) => {
             if (err) reject(err);
             else resolve();
         });

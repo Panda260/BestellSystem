@@ -43,7 +43,7 @@ window.reopenOrder = async (orderId) => {
 };
 
 window.clearHistory = async () => {
-    if (confirm("Bist du sicher, dass du den kompletten Verlauf löschen möchtest? Dies löscht auch die zugehörigen Tages-Statistiken unwiderruflich!")) {
+    if (confirm("Bist du sicher, dass du den kompletten Verlauf leeren möchtest? (Die Tages-Statistiken bleiben dabei erhalten!)")) {
         try {
             const response = await fetch("/api/orders/history", { method: "DELETE" });
             if (!response.ok) throw new Error("Server Error");
