@@ -68,19 +68,22 @@ function serializeOrder(order) {
     customerName: order.customerName,
     createdAt: order.createdAt,
     completed: order.completed,
-    inOven: !!order.inOven
+    inOven: !!order.inOven,
+    pickedUp: !!order.pickedUp
   };
 }
 
 
 function broadcastOrders() {
   const allActiveOrders = Array.from(orders.values())
+    .filter(o => !o.pickedUp)
     .map(serializeOrder);
   
-  // Kitchen and Staff might only want non-completed, but TV needs both.
-  // We'll send everything and let the client decide.
+  // Kitchen sees only not completed
   io.to("kitchen").emit("orders:update", allActiveOrders.filter(o => !o.completed));
-  io.to("staff").emit("orders:update", allActiveOrders.filter(o => !o.completed));
+  // Staff sees everything not picked up (to mark them as picked up)
+  io.to("staff").emit("orders:update", allActiveOrders);
+  // TV sees everything not picked up
   io.to("tv").emit("orders:update", allActiveOrders);
 }
 
@@ -281,6 +284,7 @@ app.get("/bestellen", (req, res) => {
         <a href="/"><button type="button">Zur Startseite</button></a>
         <a href="/admin"><button type="button" class="secondary">Produkte bearbeiten</button></a>
         <a href="/statistik"><button type="button" class="secondary">Statistik</button></a>
+        <a href="/verlauf"><button type="button" class="secondary">Verlauf</button></a>
       </div>
     </header>
 
@@ -352,6 +356,32 @@ app.get("/bestellungen", (req, res) => {
       title: "Bestellungen",
       body,
       scripts: ["/public/bestellungen.js"]
+    })
+  );
+});
+
+app.get("/verlauf", (req, res) => {
+  if (!req.session?.isAuthenticated) {
+    res.redirect("/bestellen");
+    return;
+  }
+  const body = `
+    <header class="page-header">
+      <h1>Verlauf (Heute)</h1>
+      <p>Alle abgeholten Bestellungen des Tages.</p>
+      <div class="header-actions">
+        <a href="/bestellen"><button type="button">Zurück</button></a>
+        <button id="clear-history-btn" class="button danger" onclick="clearHistory()">Verlauf leeren</button>
+      </div>
+    </header>
+    <div id="history-orders" class="orders history-orders"></div>
+  `;
+
+  res.send(
+    renderPage({
+      title: "Bestellverlauf",
+      body,
+      scripts: ["/public/verlauf.js"]
     })
   );
 });
@@ -630,7 +660,8 @@ app.post("/api/orders", async (req, res) => {
     customerName: customerName || null,
     createdAt: new Date().toISOString(),
     completed: false,
-    inOven: false
+    inOven: false,
+    pickedUp: false
   };
 
   orders.set(id, order);
@@ -689,6 +720,67 @@ app.post("/api/orders/:id/toggle-oven", async (req, res) => {
   updateCustomer(order);
 
   res.json(serializeOrder(order));
+});
+
+app.post("/api/orders/:id/pickup", async (req, res) => {
+  if (!req.session?.isAuthenticated) return res.status(401).send();
+  const order = orders.get(req.params.id);
+  if (!order) {
+    res.status(404).json({ message: "Nicht gefunden" });
+    return;
+  }
+  order.pickedUp = true;
+  order.pickedUpAt = new Date().toISOString();
+
+  await db.updateOrderPickedUp(order.id, order.pickedUp, order.pickedUpAt);
+  broadcastOrders();
+  updateCustomer(order);
+
+  res.json(serializeOrder(order));
+});
+
+app.post("/api/orders/:id/reopen", async (req, res) => {
+  if (!req.session?.isAuthenticated) return res.status(401).send();
+  
+  // order might not be in memory if server restarted
+  let order = orders.get(req.params.id);
+  if (!order) {
+      order = await db.getOrderById(req.params.id);
+      if (!order) {
+          return res.status(404).json({ message: "Nicht gefunden" });
+      }
+      orders.set(order.id, order);
+  }
+  
+  order.pickedUp = false;
+  order.pickedUpAt = null;
+
+  await db.updateOrderPickedUp(order.id, order.pickedUp, order.pickedUpAt);
+  broadcastOrders();
+  updateCustomer(order);
+
+  res.json(serializeOrder(order));
+});
+
+app.get("/api/orders/history/today", async (req, res) => {
+    if (!req.session?.isAuthenticated) return res.status(401).send();
+    try {
+        const today = new Date().toISOString().split('T')[0];
+        const pickedUpOrders = await db.getPickedUpOrders(today);
+        res.json(pickedUpOrders.map(serializeOrder));
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete("/api/orders/history", async (req, res) => {
+    if (!req.session?.isAuthenticated) return res.status(401).send();
+    try {
+        await db.clearHistory();
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 

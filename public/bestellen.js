@@ -186,13 +186,13 @@ function renderStaffOrders(orders) {
         <div class="order-card-header">
           <h3>
             Bestellung #${order.id} ${order.customerName ? `(${order.customerName})` : ""}
-            <span class="oven-status ${order.inOven ? 'in-oven' : 'not-in-oven'}">
-              ${order.inOven ? 'Im Ofen' : 'Nicht im Ofen'}
-            </span>
             <label class="switch">
               <input type="checkbox" ${order.inOven ? 'checked' : ''} onchange="toggleOven('${order.id}')">
               <span class="slider round"></span>
             </label>
+            <span class="oven-status ${order.inOven ? 'in-oven' : 'not-in-oven'}">
+              ${order.inOven ? 'Im Ofen' : 'Nicht im Ofen'}
+            </span>
           </h3>
           <button class="qr-small-btn" onclick="showSpecificQR('${order.id}')">QR</button>
         </div>
@@ -203,9 +203,10 @@ function renderStaffOrders(orders) {
               (item, index) => `
               <li>
                 <span class="${item.done ? "item-done" : ""}">${item.name} × ${item.qty}</span>
-                <button data-order="${order.id}" data-index="${index}">
-                  ${item.done ? "Rückgängig" : "Fertig"}
-                </button>
+                ${item.done 
+                  ? `<button class="pickup-btn-small" onclick="markPickedUp('${order.id}')">Abgeholt</button>`
+                  : `<button data-order="${order.id}" data-index="${index}">Fertig</button>`
+                }
               </li>
             `
             )
@@ -227,6 +228,10 @@ function renderStaffOrders(orders) {
 
 window.toggleOven = async (orderId) => {
   await fetch(`/api/orders/${orderId}/toggle-oven`, { method: "POST" });
+};
+
+window.markPickedUp = async (orderId) => {
+  await fetch(`/api/orders/${orderId}/pickup`, { method: "POST" });
 };
 
 loadMenu();

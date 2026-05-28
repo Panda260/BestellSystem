@@ -52,11 +52,13 @@ const initDb = () => {
                 customerName TEXT,
                 createdAt TEXT NOT NULL,
                 completed INTEGER DEFAULT 0,
-                completedAt TEXT
+                completedAt TEXT,
+                pickedUp INTEGER DEFAULT 0,
+                pickedUpAt TEXT
             )`, (err) => {
                 if (err) return reject(err);
                 
-                // Migration: add inOven column if it doesn't exist
+                // Migration: add inOven, pickedUp, pickedUpAt columns if they don't exist
                 db.all("PRAGMA table_info(orders)", (err, columns) => {
                     const nextStep = () => {
                         // Create lifetime_stats table and resolve/reject
@@ -103,14 +105,16 @@ const initDb = () => {
 
                     if (!err && columns) {
                         const hasInOven = columns.some(c => c.name === 'inOven');
-                        if (!hasInOven) {
-                            db.run("ALTER TABLE orders ADD COLUMN inOven INTEGER DEFAULT 0", (alterErr) => {
-                                if (alterErr) return reject(alterErr);
-                                nextStep();
-                            });
-                        } else {
-                            nextStep();
-                        }
+                        const hasPickedUp = columns.some(c => c.name === 'pickedUp');
+                        const hasPickedUpAt = columns.some(c => c.name === 'pickedUpAt');
+                        
+                        db.serialize(() => {
+                            if (!hasInOven) db.run("ALTER TABLE orders ADD COLUMN inOven INTEGER DEFAULT 0");
+                            if (!hasPickedUp) db.run("ALTER TABLE orders ADD COLUMN pickedUp INTEGER DEFAULT 0");
+                            if (!hasPickedUpAt) db.run("ALTER TABLE orders ADD COLUMN pickedUpAt TEXT");
+                        });
+                        // Allow migrations to finish
+                        setTimeout(nextStep, 100);
                     } else {
                         nextStep();
                     }
@@ -165,8 +169,8 @@ const deleteMenuItem = (id) => {
 const saveOrder = (order) => {
     return new Promise((resolve, reject) => {
         db.serialize(() => {
-            db.run("INSERT INTO orders (id, items, total, customerName, createdAt, completed, inOven) VALUES (?, ?, ?, ?, ?, ?, ?)", 
-                [order.id, JSON.stringify(order.items), order.total, order.customerName, order.createdAt, order.completed ? 1 : 0, order.inOven ? 1 : 0], 
+            db.run("INSERT INTO orders (id, items, total, customerName, createdAt, completed, inOven, pickedUp, pickedUpAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", 
+                [order.id, JSON.stringify(order.items), order.total, order.customerName, order.createdAt, order.completed ? 1 : 0, order.inOven ? 1 : 0, order.pickedUp ? 1 : 0, order.pickedUpAt || null], 
                 function(err) {
                     if (err) {
                         reject(err);
@@ -228,9 +232,24 @@ const updateOrderOven = (id, inOven) => {
     });
 };
 
+const updateOrderPickedUp = (id, pickedUp, pickedUpAt) => {
+    return new Promise((resolve, reject) => {
+        db.run("UPDATE orders SET pickedUp = ?, pickedUpAt = ? WHERE id = ?", 
+            [pickedUp ? 1 : 0, pickedUpAt, id], 
+            function(err) {
+                if (err) reject(err);
+                else resolve();
+            }
+        );
+    });
+};
+
 const getAllOrders = (onlyOpen = true) => {
     return new Promise((resolve, reject) => {
-        const query = onlyOpen ? "SELECT * FROM orders WHERE completed = 0 ORDER BY createdAt ASC" : "SELECT * FROM orders ORDER BY createdAt ASC";
+        // If onlyOpen is true, we want orders that are NOT picked up yet
+        // Originally it was "completed = 0", but now staff needs to see completed ones too
+        // We'll change onlyOpen to mean "not picked up". If they want truly ALL orders, onlyOpen = false.
+        const query = onlyOpen ? "SELECT * FROM orders WHERE pickedUp = 0 ORDER BY createdAt ASC" : "SELECT * FROM orders ORDER BY createdAt ASC";
         db.all(query, (err, rows) => {
             if (err) reject(err);
             else {
@@ -238,7 +257,8 @@ const getAllOrders = (onlyOpen = true) => {
                     ...row,
                     items: JSON.parse(row.items),
                     completed: !!row.completed,
-                    inOven: !!row.inOven
+                    inOven: !!row.inOven,
+                    pickedUp: !!row.pickedUp
                 })));
             }
         });
@@ -255,8 +275,34 @@ const getOrderById = (id) => {
                     ...row,
                     items: JSON.parse(row.items),
                     completed: !!row.completed,
-                    inOven: !!row.inOven
+                    inOven: !!row.inOven,
+                    pickedUp: !!row.pickedUp
                 });
+            }
+        });
+    });
+};
+
+const getPickedUpOrders = (date = null) => {
+    return new Promise((resolve, reject) => {
+        let query = "SELECT * FROM orders WHERE pickedUp = 1";
+        let params = [];
+        if (date) {
+            query += " AND pickedUpAt LIKE ?";
+            params.push(`${date}%`);
+        }
+        query += " ORDER BY pickedUpAt DESC";
+        
+        db.all(query, params, (err, rows) => {
+            if (err) reject(err);
+            else {
+                resolve(rows.map(row => ({
+                    ...row,
+                    items: JSON.parse(row.items),
+                    completed: !!row.completed,
+                    inOven: !!row.inOven,
+                    pickedUp: !!row.pickedUp
+                })));
             }
         });
     });
@@ -348,6 +394,15 @@ const resetStats = () => {
     });
 };
 
+const clearHistory = () => {
+    return new Promise((resolve, reject) => {
+        db.run("DELETE FROM orders WHERE pickedUp = 1", (err) => {
+            if (err) reject(err);
+            else resolve();
+        });
+    });
+};
+
 module.exports = {
     initDb,
     getMenuItems,
@@ -358,15 +413,18 @@ module.exports = {
     updateOrderCompleted,
     updateOrderItems,
     updateOrderOven,
+    updateOrderPickedUp,
     getAllOrders,
     getOrderById,
+    getPickedUpOrders,
     getOrderStats,
     getLifetimeStats,
     getCategories,
     addCategory,
     updateCategory,
     deleteCategory,
-    resetStats
+    resetStats,
+    clearHistory
 };
 
 

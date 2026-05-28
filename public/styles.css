@@ -11,16 +11,16 @@
 
 body {
   margin: 0;
-  padding: 24px;
+  padding: 16px;
 }
 
 .container {
-  max-width: 1100px;
+  max-width: 98%;
   margin: 0 auto;
 }
 
 .page-header {
-  margin-bottom: 24px;
+  margin-bottom: 20px;
 }
 
 .page-header h1 {
@@ -680,6 +680,201 @@ input:checked + .slider:before {
 .tv-item.ready .tv-name {
   font-weight: 700;
   text-align: left;
+  background: white;
+  border-radius: 24px;
+  padding: 32px;
+  max-width: 90vw;
+  max-height: 90vh;
+  width: 800px;
+  height: 88vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.qr-modal-close {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background: #f1f5f9;
+  border: none;
+  border-radius: 50%;
+  width: 48px;
+  height: 48px;
+  font-size: 32px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #0f172a;
+  transition: background-color 0.2s;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  z-index: 10;
+}
+
+.qr-modal-close:hover {
+  background: #cbd5e1;
+}
+
+.qr-modal img {
+  height: 52vh;
+  width: 52vh;
+  max-width: 90vw;
+  max-height: 90vh;
+  object-fit: contain;
+  margin: 16px 0;
+}
+
+.qr-modal h2 {
+  margin: 0 0 12px 0;
+  color: #0f172a;
+  font-size: 2.2rem;
+}
+
+.show-qr-btn {
+  margin-top: 12px;
+  background: #10b981;
+}
+
+.show-qr-btn:hover {
+  background: #059669;
+}
+
+/* Oven Status Badge on Staff & Kitchen view */
+.oven-status {
+  display: inline-block;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 999px;
+  vertical-align: middle;
+  margin-left: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.oven-status.in-oven {
+  color: #065f46;
+  background-color: #d1fae5;
+  border: 1px solid #10b981;
+}
+
+.oven-status.not-in-oven {
+  color: #991b1b;
+  background-color: #fee2e2;
+  border: 1px solid #f87171;
+}
+
+/* Switch Toggle Component styling */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 40px;
+  height: 20px;
+  vertical-align: middle;
+  margin-left: 8px;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #cbd5e1;
+  transition: .3s ease;
+  border-radius: 20px;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 14px;
+  width: 14px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: .3s ease;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+
+input:checked + .slider {
+  background-color: #10b981;
+}
+
+input:checked + .slider:before {
+  transform: translateX(20px);
+}
+
+/* Customer Status Banner */
+.status-banner {
+  padding: 16px;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 1.4rem;
+  margin-bottom: 24px;
+  text-align: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+}
+
+.status-banner.in-oven {
+  background-color: #ecfdf5;
+  color: #047857;
+  border: 2px solid #34d399;
+}
+
+.status-banner.not-in-oven {
+  background-color: #fef2f2;
+  color: #b91c1c;
+  border: 2px solid #f87171;
+}
+
+/* TV View styles */
+.tv-oven-status {
+  font-size: 1.1rem;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.tv-oven-status.in-oven {
+  background-color: #d1fae5;
+  color: #065f46;
+  border: 2px solid #34d399;
+}
+
+.tv-oven-status.not-in-oven {
+  background-color: #fee2e2;
+  color: #991b1b;
+  border: 2px solid #f87171;
+}
+
+/* Left/right layout for ready cards in TV view */
+.tv-item.ready {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+}
+
+.tv-item.ready .tv-name {
+  font-weight: 700;
+  text-align: left;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -691,4 +886,34 @@ input:checked + .slider:before {
   text-align: right;
   white-space: nowrap;
   flex-shrink: 0;
+}
+
+/* History and Pickup Buttons */
+.pickup-btn-small {
+  background: #10b981;
+  color: white;
+  border: none;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.pickup-btn-small:hover {
+  background: #059669;
+}
+
+.reopen-btn {
+  background: #f59e0b;
+  font-size: 0.9rem;
+  padding: 6px 12px;
+}
+.reopen-btn:hover {
+  background: #d97706;
+}
+
+.history-card {
+  background: #f8fafc;
+}
+.history-orders {
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
 }
