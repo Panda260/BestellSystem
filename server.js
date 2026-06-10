@@ -17,6 +17,8 @@ const SESSION_SECRET = process.env.SESSION_SECRET || "bestellsystem-secret";
 
 // Global orders Map for real-time tracking (synced with DB)
 const orders = new Map();
+// Global Set to track all generated IDs, preventing collisions even after orders are picked up
+const usedOrderIds = new Set();
 
 
 app.use(express.json());
@@ -50,14 +52,23 @@ function renderPage({ title, body, scripts = [] }) {
 }
 
 function generateOrderId() {
-  const maxAttempts = 1000;
-  for (let i = 0; i < maxAttempts; i += 1) {
-    const id = Math.floor(100 + Math.random() * 900).toString();
-    if (!orders.has(id)) {
+  let min = 100;
+  let max = 999;
+  let attempts = 0;
+  
+  while (true) {
+    const id = Math.floor(min + Math.random() * (max - min + 1)).toString();
+    if (!usedOrderIds.has(id)) {
       return id;
     }
+    attempts++;
+    if (attempts > 50) {
+      // Wenn es zu viele Kollisionen gibt (Bereich fast voll), erhöhe die Stellenanzahl (z.B. auf 4-stellig: 1000-9999)
+      min *= 10;
+      max = max * 10 + 9;
+      attempts = 0;
+    }
   }
-  return null;
 }
 
 function serializeOrder(order) {
@@ -99,8 +110,8 @@ app.get("/", (req, res) => {
       <p>Gib deine Bestell-ID ein, um den Status zu sehen.</p>
     </header>
     <form id="status-form" class="card">
-      <label for="order-id">Bestell-ID (3-stellig)</label>
-      <input id="order-id" name="order-id" type="text" maxlength="3" pattern="\\d{3}" required />
+      <label for="order-id">Bestell-ID</label>
+      <input id="order-id" name="order-id" type="text" pattern="\\d+" required />
       <button type="submit">Status anzeigen</button>
     </form>
     <p class="hint">Oder scanne den QR-Code, den du bei der Bestellung erhalten hast.</p>
@@ -488,6 +499,7 @@ app.delete("/api/stats", async (req, res) => {
   try {
     await db.resetStats();
     orders.clear(); // Clear memory map too
+    usedOrderIds.clear(); // Clear used ids set
     broadcastOrders(); // Notify anyone watching
     res.json({ success: true });
   } catch (err) {
@@ -665,7 +677,17 @@ app.post("/api/orders", async (req, res) => {
   };
 
   orders.set(id, order);
-  await db.saveOrder(order);
+  usedOrderIds.add(id);
+  
+  try {
+    await db.saveOrder(order);
+  } catch (err) {
+    orders.delete(id);
+    usedOrderIds.delete(id);
+    console.error("Fehler beim Speichern der Bestellung in DB:", err);
+    return res.status(500).json({ message: "Datenbankfehler: Konnte Bestellung nicht speichern." });
+  }
+
   broadcastOrders();
   updateCustomer(order);
 
@@ -785,7 +807,7 @@ app.delete("/api/orders/history", async (req, res) => {
 
 
 app.get("/:orderId", (req, res, next) => {
-  if (!/^\d{3}$/.test(req.params.orderId)) {
+  if (!/^\d+$/.test(req.params.orderId)) {
     next();
     return;
   }
@@ -851,8 +873,13 @@ io.on("connection", (socket) => {
 server.listen(PORT, async () => {
   try {
     await db.initDb();
-    const openOrders = await db.getAllOrders(true);
-    openOrders.forEach(o => orders.set(o.id, o));
+    const allOrders = await db.getAllOrders(false); // onlyOpen=false -> fetch all to populate usedOrderIds
+    allOrders.forEach(o => {
+      usedOrderIds.add(o.id);
+      if (!o.pickedUp) {
+        orders.set(o.id, o);
+      }
+    });
     console.log(`BestellSystem läuft auf http://localhost:${PORT}`);
   } catch (err) {
     console.error("Fehler beim Starten der Datenbank:", err);
