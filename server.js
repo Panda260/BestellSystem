@@ -658,7 +658,8 @@ app.post("/api/orders", async (req, res) => {
         name: item.name,
         price: Number(item.price), // Note: total is price * 1 here, but we'll sum later
         qty: 1,
-        done: false
+        done: false,
+        pickedUp: false
       });
     }
   });
@@ -738,6 +739,36 @@ app.post("/api/orders/:id/toggle-oven", async (req, res) => {
   order.inOven = !order.inOven;
 
   await db.updateOrderOven(order.id, order.inOven);
+  broadcastOrders();
+  updateCustomer(order);
+
+  res.json(serializeOrder(order));
+});
+
+app.post("/api/orders/:id/items/:index/pickup", async (req, res) => {
+  if (!req.session?.isAuthenticated) return res.status(401).send();
+  const order = orders.get(req.params.id);
+  if (!order) {
+    res.status(404).json({ message: "Nicht gefunden" });
+    return;
+  }
+  const index = Number(req.params.index);
+  if (!Number.isInteger(index) || index < 0 || index >= order.items.length) {
+    res.status(400).json({ message: "Ungültiger Index" });
+    return;
+  }
+  
+  order.items[index].pickedUp = true;
+  
+  // Wenn alle Items abgeholt wurden, ist die gesamte Bestellung abgeholt
+  if (order.items.every(item => item.pickedUp)) {
+    order.pickedUp = true;
+    order.pickedUpAt = new Date().toISOString();
+    await db.updateOrderPickedUp(order.id, order.pickedUp, order.pickedUpAt);
+  }
+  
+  await db.updateOrderItems(order.id, order.items, order.completed, order.completedAt);
+  
   broadcastOrders();
   updateCustomer(order);
 

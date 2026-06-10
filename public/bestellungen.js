@@ -23,14 +23,15 @@ socket.on("orders:update", (orders) => {
 
         <ul class="status-list">
           ${order.items
-            .map(
-              (item) => `
+            .map((item) => {
+              if (item.pickedUp) return "";
+              return `
               <li>
                 <span class="${item.done ? "item-done" : ""}">${item.name} × ${item.qty}</span>
                 <span>${item.done ? "✔" : "⏳"}</span>
               </li>
-            `
-            )
+            `;
+            })
             .join("")}
         </ul>
       </div>

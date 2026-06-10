@@ -199,17 +199,18 @@ function renderStaffOrders(orders) {
         <ul class="status-list">
 
           ${order.items
-            .map(
-              (item, index) => `
+            .map((item, index) => {
+              if (item.pickedUp) return "";
+              return `
               <li>
                 <span class="${item.done ? "item-done" : ""}">${item.name} × ${item.qty}</span>
                 ${item.done 
-                  ? `<button class="pickup-btn-small" onclick="markPickedUp('${order.id}')">Abgeholt</button>`
+                  ? `<button class="pickup-btn-small" onclick="markItemPickedUp('${order.id}', ${index})">Abholen</button>`
                   : `<button data-order="${order.id}" data-index="${index}">Fertig</button>`
                 }
               </li>
-            `
-            )
+            `;
+            })
             .join("")}
         </ul>
       </div>
@@ -232,6 +233,10 @@ window.toggleOven = async (orderId) => {
 
 window.markPickedUp = async (orderId) => {
   await fetch(`/api/orders/${orderId}/pickup`, { method: "POST" });
+};
+
+window.markItemPickedUp = async (orderId, index) => {
+  await fetch(`/api/orders/${orderId}/items/${index}/pickup`, { method: "POST" });
 };
 
 loadMenu();
