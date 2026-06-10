@@ -13,6 +13,7 @@ const db = new sqlite3.Database(dbPath);
 
 const initDb = () => {
     return new Promise((resolve, reject) => {
+        db.run("PRAGMA journal_mode = WAL;");
         db.serialize(() => {
             db.run(`CREATE TABLE IF NOT EXISTS menu_items (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
