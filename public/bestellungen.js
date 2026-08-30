@@ -1,7 +1,16 @@
-const socket = io();
+const socket = io({
+  reconnection: true,
+  reconnectionAttempts: Infinity,
+  reconnectionDelay: 1000,
+  reconnectionDelayMax: 5000,
+});
 const kitchenOrders = document.getElementById("kitchen-orders");
 
 socket.emit("join", { role: "kitchen" });
+
+socket.on("connect", () => {
+  socket.emit("join", { role: "kitchen" });
+});
 
 socket.on("orders:update", (orders) => {
   const sortedOrders = [...orders].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
@@ -16,18 +25,16 @@ socket.on("orders:update", (orders) => {
       <div class="order-card">
         <h3>
           Bestellung #${order.id} ${order.customerName ? `(${order.customerName})` : ""}
-          <span class="oven-status ${order.inOven ? 'in-oven' : 'not-in-oven'}">
-            ${order.inOven ? 'Im Ofen' : 'Nicht im Ofen'}
-          </span>
         </h3>
 
         <ul class="status-list">
           ${order.items
             .map((item) => {
               if (item.pickedUp) return "";
+              const ovenIcon = item.inOven ? ' 🔥' : '';
               return `
               <li>
-                <span class="${item.done ? "item-done" : ""}">${item.name} × ${item.qty}</span>
+                <span class="${item.done ? "item-done" : ""}">${item.name} × ${item.qty}${ovenIcon}</span>
                 <span>${item.done ? "✔" : "⏳"}</span>
               </li>
             `;

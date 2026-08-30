@@ -1,13 +1,13 @@
-version: "3.9"
-
 services:
   bestellsystem:
-    image: ghcr.io/panda260/bestellsystem:main
+    build:
+      context: .
     ports:
-      - "3000:3000"
+      - "3001:3000"
     environment:
-      BESTELL_PASSWORD: "changeme"
-      SESSION_SECRET: "replace-me"
+      BESTELL_PASSWORD: "187hdj"
+      SESSION_SECRET: "kugfsugfeogfds"
     volumes:
       - ./data:/app/data
-
+      - .:/app
+      - /app/node_modules

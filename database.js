@@ -45,6 +45,19 @@ const initDb = () => {
                 db.run("INSERT OR IGNORE INTO categories (name, max_limit) VALUES (?, ?)", ["Pizza", null]);
             });
 
+            // Customer names table (for autocomplete)
+            db.run(`CREATE TABLE IF NOT EXISTS customer_names (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                createdAt TEXT NOT NULL
+            )`);
+
+            // TV settings table (key-value)
+            db.run(`CREATE TABLE IF NOT EXISTS tv_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )`);
+
             // Orders table (for persistence)
             db.run(`CREATE TABLE IF NOT EXISTS orders (
                 id TEXT PRIMARY KEY,
@@ -257,13 +270,24 @@ const getAllOrders = (onlyOpen = true) => {
         db.all(query, (err, rows) => {
             if (err) reject(err);
             else {
-                resolve(rows.map(row => ({
-                    ...row,
-                    items: JSON.parse(row.items),
-                    completed: !!row.completed,
-                    inOven: !!row.inOven,
-                    pickedUp: !!row.pickedUp
-                })));
+                resolve(rows.map(row => {
+                    let items = [];
+                    try {
+                        items = JSON.parse(row.items).map((item) => ({
+                            ...item,
+                            done: !!item.done,
+                            inOven: !!item.inOven,
+                            pickedUp: !!item.pickedUp,
+                        }));
+                    } catch (e) {}
+                    return {
+                        ...row,
+                        items,
+                        completed: !!row.completed,
+                        inOven: !!row.inOven,
+                        pickedUp: !!row.pickedUp
+                    };
+                }));
             }
         });
     });
@@ -275,9 +299,18 @@ const getOrderById = (id) => {
             if (err) reject(err);
             else if (!row) resolve(null);
             else {
+                let items = [];
+                try {
+                    items = JSON.parse(row.items).map((item) => ({
+                        ...item,
+                        done: !!item.done,
+                        inOven: !!item.inOven,
+                        pickedUp: !!item.pickedUp,
+                    }));
+                } catch (e) {}
                 resolve({
                     ...row,
-                    items: JSON.parse(row.items),
+                    items,
                     completed: !!row.completed,
                     inOven: !!row.inOven,
                     pickedUp: !!row.pickedUp
@@ -300,13 +333,24 @@ const getPickedUpOrders = (date = null) => {
         db.all(query, params, (err, rows) => {
             if (err) reject(err);
             else {
-                resolve(rows.map(row => ({
-                    ...row,
-                    items: JSON.parse(row.items),
-                    completed: !!row.completed,
-                    inOven: !!row.inOven,
-                    pickedUp: !!row.pickedUp
-                })));
+                resolve(rows.map(row => {
+                    let items = [];
+                    try {
+                        items = JSON.parse(row.items).map((item) => ({
+                            ...item,
+                            done: !!item.done,
+                            inOven: !!item.inOven,
+                            pickedUp: !!item.pickedUp,
+                        }));
+                    } catch (e) {}
+                    return {
+                        ...row,
+                        items,
+                        completed: !!row.completed,
+                        inOven: !!row.inOven,
+                        pickedUp: !!row.pickedUp
+                    };
+                }));
             }
         });
     });
@@ -329,6 +373,35 @@ const getOrderStats = (date = null) => {
                     items.forEach(item => {
                         stats[item.name] = (stats[item.name] || 0) + 1; // qty is always 1 now
                     });
+                });
+                resolve(stats);
+            }
+        });
+    });
+};
+
+const getCustomerStats = (date = null) => {
+    return new Promise((resolve, reject) => {
+        let query = "SELECT items, customerName, createdAt FROM orders";
+        let params = [];
+        if (date) {
+            query += " WHERE createdAt LIKE ?";
+            params.push(`${date}%`);
+        }
+        db.all(query, params, (err, rows) => {
+            if (err) reject(err);
+            else {
+                const stats = {};
+                rows.forEach(row => {
+                    const name = row.customerName || "Unbekannt";
+                    if (!stats[name]) stats[name] = { qty: 0, total: 0 };
+                    try {
+                        const items = JSON.parse(row.items);
+                        items.forEach(item => {
+                            stats[name].qty += 1;
+                            stats[name].total += (item.price || 0);
+                        });
+                    } catch (e) {}
                 });
                 resolve(stats);
             }
@@ -372,6 +445,70 @@ const deleteCategory = (name) => {
     });
 };
 
+// ---- Customer names (autocomplete) ----
+const getCustomerNames = () => {
+    return new Promise((resolve, reject) => {
+        db.all("SELECT id, name, createdAt FROM customer_names ORDER BY name COLLATE NOCASE ASC", (err, rows) => {
+            if (err) reject(err);
+            else resolve(rows || []);
+        });
+    });
+};
+
+const searchCustomerNames = (query) => {
+    return new Promise((resolve, reject) => {
+        const q = `%${query}%`;
+        db.all(
+            "SELECT id, name FROM customer_names WHERE name LIKE ? COLLATE NOCASE ORDER BY name COLLATE NOCASE ASC LIMIT 20",
+            [q],
+            (err, rows) => {
+                if (err) reject(err);
+                else resolve(rows || []);
+            }
+        );
+    });
+};
+
+const addCustomerName = (name) => {
+    return new Promise((resolve, reject) => {
+        const clean = (name || "").trim();
+        if (!clean) return resolve(null);
+        db.run(
+            "INSERT OR IGNORE INTO customer_names (name, createdAt) VALUES (?, ?)",
+            [clean, new Date().toISOString()],
+            function(err) {
+                if (err) reject(err);
+                else resolve(this.lastID || null);
+            }
+        );
+    });
+};
+
+const updateCustomerName = (id, name) => {
+    return new Promise((resolve, reject) => {
+        const clean = (name || "").trim();
+        if (!clean) return reject(new Error("Name darf nicht leer sein"));
+        db.run(
+            "UPDATE customer_names SET name = ? WHERE id = ?",
+            [clean, id],
+            function(err) {
+                if (err) reject(err);
+                else if (this.changes === 0) reject(new Error("Nicht gefunden"));
+                else resolve();
+            }
+        );
+    });
+};
+
+const deleteCustomerName = (id) => {
+    return new Promise((resolve, reject) => {
+        db.run("DELETE FROM customer_names WHERE id = ?", [id], function(err) {
+            if (err) reject(err);
+            else resolve();
+        });
+    });
+};
+
 const getLifetimeStats = () => {
     return new Promise((resolve, reject) => {
         db.all("SELECT item_name, qty FROM lifetime_stats", (err, rows) => {
@@ -407,6 +544,31 @@ const clearHistory = () => {
     });
 };
 
+// ---- TV Settings ----
+const getTvSettings = () => {
+    return new Promise((resolve, reject) => {
+        db.all("SELECT key, value FROM tv_settings", (err, rows) => {
+            if (err) return reject(err);
+            const settings = {};
+            (rows || []).forEach((r) => { settings[r.key] = r.value; });
+            resolve(settings);
+        });
+    });
+};
+
+const setTvSetting = (key, value) => {
+    return new Promise((resolve, reject) => {
+        db.run(
+            "INSERT INTO tv_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            [key, String(value)],
+            (err) => {
+                if (err) reject(err);
+                else resolve();
+            }
+        );
+    });
+};
+
 module.exports = {
     initDb,
     getMenuItems,
@@ -422,13 +584,21 @@ module.exports = {
     getOrderById,
     getPickedUpOrders,
     getOrderStats,
+    getCustomerStats,
     getLifetimeStats,
     getCategories,
     addCategory,
     updateCategory,
     deleteCategory,
+    getCustomerNames,
+    searchCustomerNames,
+    addCustomerName,
+    updateCustomerName,
+    deleteCustomerName,
     resetStats,
-    clearHistory
+    clearHistory,
+    getTvSettings,
+    setTvSetting
 };
 
 
