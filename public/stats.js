@@ -83,5 +83,24 @@ document.getElementById("reset-stats-btn").addEventListener("click", async () =>
     }
 });
 
+document.getElementById("backfill-names-btn").addEventListener("click", async () => {
+    const btn = document.getElementById("backfill-names-btn");
+    const resultEl = document.getElementById("backfill-result");
+    btn.disabled = true;
+    btn.textContent = "Backfill läuft...";
+    resultEl.textContent = "";
+    try {
+        const res = await fetch("/api/names/backfill", { method: "POST" });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Backfill fehlgeschlagen");
+        resultEl.textContent = `Fertig: ${data.added} neu hinzugefügt, ${data.skipped} Duplikate übersprungen (${data.total} Namen gesamt).`;
+    } catch (err) {
+        resultEl.textContent = "Fehler: " + err.message;
+    } finally {
+        btn.disabled = false;
+        btn.textContent = "Namen in Autocomplete übernehmen";
+    }
+});
+
 loadStats();
 

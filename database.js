@@ -484,6 +484,46 @@ const addCustomerName = (name) => {
     });
 };
 
+// Backfill customer_names from orders (with case-insensitive duplicate check)
+const backfillCustomerNames = () => {
+    return new Promise((resolve, reject) => {
+        db.all(
+            "SELECT DISTINCT customerName FROM orders WHERE customerName IS NOT NULL AND TRIM(customerName) != ''",
+            (err, rows) => {
+                if (err) return reject(err);
+                const orderNames = (rows || [])
+                    .map(r => r.customerName.trim())
+                    .filter(Boolean);
+                db.all("SELECT name FROM customer_names", (err2, existing) => {
+                    if (err2) return reject(err2);
+                    const existingLower = new Set((existing || []).map(r => r.name.toLowerCase()));
+                    const toAdd = orderNames.filter(n => !existingLower.has(n.toLowerCase()));
+                    const total = orderNames.length;
+                    if (toAdd.length === 0) {
+                        return resolve({ total, added: 0, skipped: total });
+                    }
+                    let added = 0;
+                    let pending = toAdd.length;
+                    toAdd.forEach(name => {
+                        db.run(
+                            "INSERT OR IGNORE INTO customer_names (name, createdAt) VALUES (?, ?)",
+                            [name, new Date().toISOString()],
+                            function(e) {
+                                if (e) console.error("Backfill insert error:", e);
+                                else if (this.lastID) added += 1;
+                                pending -= 1;
+                                if (pending === 0) {
+                                    resolve({ total, added, skipped: total - added });
+                                }
+                            }
+                        );
+                    });
+                });
+            }
+        );
+    });
+};
+
 const updateCustomerName = (id, name) => {
     return new Promise((resolve, reject) => {
         const clean = (name || "").trim();
@@ -593,6 +633,7 @@ module.exports = {
     getCustomerNames,
     searchCustomerNames,
     addCustomerName,
+    backfillCustomerNames,
     updateCustomerName,
     deleteCustomerName,
     resetStats,

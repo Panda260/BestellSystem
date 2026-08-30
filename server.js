@@ -378,6 +378,8 @@ app.get("/statistik", (req, res) => {
       <div class="card">
         <h2>Bestellungen pro Person (Gesamt)</h2>
         <div id="customer-stats-total"></div>
+        <button id="backfill-names-btn" class="button secondary small">Namen in Autocomplete übernehmen</button>
+        <p id="backfill-result" class="hint"></p>
       </div>
     </div>
     <button id="reset-stats-btn" class="button danger">Statistik zurücksetzen</button>
@@ -668,6 +670,16 @@ app.post("/api/names", async (req, res) => {
     const id = await db.addCustomerName(name);
     if (!id) return res.status(409).json({ message: "Name existiert bereits" });
     res.status(201).json({ id, name: (name || "").trim() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/names/backfill", async (req, res) => {
+  if (!req.session?.isAuthenticated) return res.status(401).send();
+  try {
+    const result = await db.backfillCustomerNames();
+    res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
