@@ -32,24 +32,55 @@ app.use(
 
 app.use("/public", express.static(path.join(__dirname, "public")));
 
-function renderPage({ title, body, scripts = [] }) {
+function renderPage({ title, body, scripts = [], back = null, actions = "", bodyClass = "" }) {
+  const backHtml = back
+    ? `<a href="${back}" class="topbar-back" aria-label="Zurück"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></a>`
+    : "";
   return `<!doctype html>
 <html lang="de">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="theme-color" content="#ffffff" />
   <title>${title}</title>
   <link rel="stylesheet" href="/public/styles.css" />
 </head>
-<body>
-  <div class="container">
+<body class="${bodyClass}">
+  <header class="topbar">
+    ${backHtml}
+    <div class="topbar-title">${title}</div>
+    <div class="topbar-actions">${actions}</div>
+  </header>
+  <main class="main">
     ${body}
-  </div>
+  </main>
   <script src="/socket.io/socket.io.js"></script>
   ${scripts.map((src) => `<script src="${src}"></script>`).join("\n")}
 </body>
 </html>`;
 }
+
+// Settings gear icon (reused across pages)
+const SETTINGS_GEAR = `<button type="button" class="icon-btn" id="settings-btn" aria-label="Menü"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button>
+<div id="settings-menu" class="settings-menu hidden">
+  <a href="/admin">Produkte</a>
+  <a href="/statistik">Statistik</a>
+  <a href="/namen">Namen</a>
+  <a href="/tv-einstellungen">TV-Einstellungen</a>
+  <a href="/verlauf">Verlauf</a>
+</div>`;
+
+const SETTINGS_TOGGLE_JS = `<script>
+(function(){
+  var btn=document.getElementById('settings-btn');
+  var menu=document.getElementById('settings-menu');
+  if(!btn||!menu)return;
+  btn.addEventListener('click',function(e){e.stopPropagation();menu.classList.toggle('hidden');});
+  document.addEventListener('click',function(e){if(!menu.contains(e.target)&&e.target!==btn)menu.classList.add('hidden');});
+})();
+</script>`;
 
 function generateOrderId() {
   let min = 100;
@@ -72,6 +103,8 @@ function generateOrderId() {
 }
 
 function serializeOrder(order) {
+  // Derive order-level inOven from items (any item in oven -> order in oven)
+  const anyInOven = order.items.some((i) => i.inOven);
   return {
     id: order.id,
     items: order.items,
@@ -79,7 +112,7 @@ function serializeOrder(order) {
     customerName: order.customerName,
     createdAt: order.createdAt,
     completed: order.completed,
-    inOven: !!order.inOven,
+    inOven: anyInOven,
     pickedUp: !!order.pickedUp
   };
 }
@@ -104,42 +137,75 @@ function updateCustomer(order) {
 }
 
 app.get("/", (req, res) => {
+  if (!req.session?.isAuthenticated) {
+    const body = `
+      <form class="card login-card" method="post" action="/enter">
+        <h2>BestellSystem</h2>
+        <p class="hint">Gib deine Bestell-ID ein, um den Status zu sehen.</p>
+        <label for="enter-input">Bestell-ID</label>
+        <input id="enter-input" name="value" type="text" required autofocus placeholder="Bestell-ID" />
+        <button type="submit">Status anzeigen</button>
+      </form>
+    `;
+    res.send(renderPage({ title: "BestellSystem", body }));
+    return;
+  }
+
   const body = `
-    <header class="page-header">
-      <h1>BestellSystem</h1>
-      <p>Gib deine Bestell-ID ein, um den Status zu sehen.</p>
-    </header>
-    <form id="status-form" class="card">
-      <label for="order-id">Bestell-ID</label>
-      <input id="order-id" name="order-id" type="text" pattern="\\d+" required />
-      <button type="submit">Status anzeigen</button>
-    </form>
-    <p class="hint">Oder scanne den QR-Code, den du bei der Bestellung erhalten hast.</p>
-    <div class="card">
-      <a href="/bestellen"><button type="button">Zur Bestellseite</button></a>
+    <div id="search-bar" class="search-bar hidden">
+      <input id="order-search" type="text" placeholder="Name oder Bestell-ID suchen..." autocomplete="off" />
+      <button id="search-close" class="search-close" aria-label="Schließen">&times;</button>
     </div>
+    <a href="/bestellen" class="big-cta">+ Bestellung aufgeben</a>
+    <section class="card">
+      <h2>Offene Bestellungen</h2>
+      <div id="staff-orders" class="orders"></div>
+    </section>
   `;
+  const searchIcon = `<button type="button" class="icon-btn" id="search-btn" aria-label="Suchen"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></button>`;
   res.send(
     renderPage({
       title: "BestellSystem",
       body,
-      scripts: ["/public/start.js"]
+      actions: searchIcon + SETTINGS_GEAR + SETTINGS_TOGGLE_JS,
+      scripts: ["/public/home.js"]
+    })
+  );
+});
+
+// Combined entry: order ID -> status page, admin password -> admin UI
+app.post("/enter", express.urlencoded({ extended: true }), (req, res) => {
+  const value = (req.body.value || "").trim();
+  if (value === ORDER_PASSWORD) {
+    req.session.isAuthenticated = true;
+    res.redirect(req.session.redirectAfterLogin || "/");
+    delete req.session.redirectAfterLogin;
+    return;
+  }
+  if (/^\d+$/.test(value)) {
+    res.redirect(`/${value}`);
+    return;
+  }
+  res.status(400).send(
+    renderPage({
+      title: "Ungültige Eingabe",
+      body: `
+        <div class="card login-card">
+          <h2>Ungültige Eingabe</h2>
+          <p class="hint">Bitte eine gültige Bestell-ID (Zahlen) eingeben.</p>
+          <a class="button" href="/">Zurück</a>
+        </div>
+      `
     })
   );
 });
 
 app.get("/admin", (req, res) => {
   if (!req.session?.isAuthenticated) {
-    res.redirect("/bestellen");
+    res.redirect("/");
     return;
   }
   const body = `
-    <header class="page-header">
-      <h1>Produkte verwalten</h1>
-      <div class="header-actions">
-        <a href="/bestellen" class="button secondary">Zurück</a>
-      </div>
-    </header>
     <div class="admin-container">
       <div class="card full-width">
         <h2>Produktliste</h2>
@@ -169,61 +235,131 @@ app.get("/admin", (req, res) => {
             <label for="new-category">Kategorie</label>
             <select id="new-category">
               <option value="">Keine</option>
-              <!-- Categories will be added here by JS -->
             </select>
             <button type="submit">Hinzufügen</button>
           </form>
         </div>
       </div>
     </div>
-
   `;
-  res.send(renderPage({ 
-    title: "Admin - Produkte", 
-    body, 
-    scripts: ["/public/admin.js"] 
+  res.send(renderPage({
+    title: "Produkte",
+    body,
+    back: "/",
+    scripts: ["/public/admin.js"]
   }));
 });
 
 app.get("/tv", (req, res) => {
+  const now = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+  const body = `<h1 class="tv-title">Aktuelle Bestellungen</h1><div id="tv-list" class="tv-list"></div><div id="tv-clock" class="tv-clock">${now}</div>`;
+  res.send(renderPage({
+    title: "TV-Anzeige",
+    body,
+    bodyClass: "tv-view",
+    scripts: ["/public/tv.js"]
+  }));
+});
+
+app.get("/tv-einstellungen", (req, res) => {
+  if (!req.session?.isAuthenticated) {
+    res.redirect("/");
+    return;
+  }
   const body = `
-    <header class="page-header tv-header">
-      <h1>Bestellstatus</h1>
-    </header>
-    <div class="tv-grid">
-      <div class="tv-column">
-        <h2>In Arbeit</h2>
-        <div id="tv-pending" class="tv-list"></div>
+    <div class="tv-settings">
+      <h2>TV-Einstellungen</h2>
+      <p class="hint">Passe die Farben der TV-Anzeige an. Änderungen werden sofort gespeichert.</p>
+      <div class="settings-color-grid">
+        <label class="color-picker-row">
+          <span>Hintergrund</span>
+          <input type="color" id="tv-bg" data-key="bgColor" />
+        </label>
+        <label class="color-picker-row">
+          <span>Box: Wartend</span>
+          <input type="color" id="tv-box-waiting" data-key="boxWaiting" />
+        </label>
+        <label class="color-picker-row">
+          <span>Box: Im Ofen</span>
+          <input type="color" id="tv-box-oven" data-key="boxOven" />
+        </label>
+        <label class="color-picker-row">
+          <span>Tag: Im Ofen</span>
+          <input type="color" id="tv-tag-oven" data-key="tagOven" />
+        </label>
+        <label class="color-picker-row">
+          <span>Box: Abholbereit</span>
+          <input type="color" id="tv-box-ready" data-key="boxReady" />
+        </label>
+        <label class="color-picker-row">
+          <span>Tag: Abholbereit</span>
+          <input type="color" id="tv-tag-ready" data-key="tagReady" />
+        </label>
+        <label class="color-picker-row">
+          <span>Textfarbe Wartend</span>
+          <input type="color" id="tv-text-waiting" data-key="textWaiting" />
+        </label>
+        <label class="color-picker-row">
+          <span>Textfarbe Im Ofen</span>
+          <input type="color" id="tv-text-oven" data-key="textOven" />
+        </label>
+        <label class="color-picker-row">
+          <span>Textfarbe Abholbereit</span>
+          <input type="color" id="tv-text-ready" data-key="textReady" />
+        </label>
+        <label class="color-picker-row">
+          <span>Titel</span>
+          <input type="color" id="tv-title-color" data-key="titleColor" />
+        </label>
+        <label class="color-picker-row">
+          <span>Uhrzeit</span>
+          <input type="color" id="tv-clock-color" data-key="clockColor" />
+        </label>
       </div>
-      <div class="tv-column">
-        <h2>Abholbereit</h2>
-        <div id="tv-ready" class="tv-list"></div>
-      </div>
+      <button id="tv-settings-reset" class="button secondary">Auf Standard zurücksetzen</button>
+      <p id="tv-settings-saved" class="hint" style="opacity:0;">Gespeichert!</p>
+      <a href="/tv" class="button" style="margin-top:16px;display:inline-block;">TV-Anzeige ansehen</a>
     </div>
   `;
-  res.send(renderPage({ 
-    title: "BestellSystem TV", 
-    body, 
-    scripts: ["/public/tv.js"] 
+  res.send(renderPage({
+    title: "TV-Einstellungen",
+    body,
+    back: "/",
+    scripts: ["/public/tv-settings.js"]
   }));
+});
+
+// API: Get TV settings
+app.get("/api/tv-settings", async (req, res) => {
+  try {
+    const settings = await db.getTvSettings();
+    res.json(settings);
+  } catch (err) {
+    res.status(500).json({ error: "Fehler beim Laden der Einstellungen" });
+  }
+});
+
+// API: Update TV setting
+app.post("/api/tv-settings", async (req, res) => {
+  if (!req.session?.isAuthenticated) return res.status(401).json({ error: "Nicht autorisiert" });
+  const { key, value } = req.body;
+  if (!key || !value) return res.status(400).json({ error: "key und value erforderlich" });
+  try {
+    await db.setTvSetting(key, value);
+    io.emit("tv-settings:update");
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: "Fehler beim Speichern" });
+  }
 });
 
 
 app.get("/statistik", (req, res) => {
   if (!req.session?.isAuthenticated) {
-    res.redirect("/bestellen");
+    res.redirect("/");
     return;
   }
   const body = `
-    <header class="page-header">
-      <h1>Statistik</h1>
-      <div class="header-actions">
-        <a href="/bestellen" class="button secondary">Zurück</a>
-        <a href="/statistik-lifetime" class="button secondary">Lifetime-Statistik</a>
-        <button id="reset-stats-btn" class="button danger">Statistik zurücksetzen</button>
-      </div>
-    </header>
-
     <div class="grid">
       <div class="card">
         <h2>Übersicht Heute</h2>
@@ -234,27 +370,33 @@ app.get("/statistik", (req, res) => {
         <div id="stats-total"></div>
       </div>
     </div>
+    <div class="grid">
+      <div class="card">
+        <h2>Bestellungen pro Person (Heute)</h2>
+        <div id="customer-stats-today"></div>
+      </div>
+      <div class="card">
+        <h2>Bestellungen pro Person (Gesamt)</h2>
+        <div id="customer-stats-total"></div>
+      </div>
+    </div>
+    <button id="reset-stats-btn" class="button danger">Statistik zurücksetzen</button>
   `;
-  res.send(renderPage({ 
-    title: "Statistik", 
-    body, 
-    scripts: ["/public/stats.js"] 
+  res.send(renderPage({
+    title: "Statistik",
+    body,
+    back: "/",
+    actions: `<a href="/statistik-lifetime" class="button secondary small">Lifetime</a>`,
+    scripts: ["/public/stats.js"]
   }));
 });
 
 app.get("/statistik-lifetime", (req, res) => {
   if (!req.session?.isAuthenticated) {
-    res.redirect("/bestellen");
+    res.redirect("/");
     return;
   }
   const body = `
-    <header class="page-header">
-      <h1>Lifetime-Statistik</h1>
-      <div class="header-actions">
-        <a href="/statistik" class="button secondary">Zurück</a>
-      </div>
-    </header>
-
     <div class="grid">
       <div class="card full-width">
         <h2>Lifetime-Statistik (nicht löschbar)</h2>
@@ -262,24 +404,24 @@ app.get("/statistik-lifetime", (req, res) => {
       </div>
     </div>
   `;
-  res.send(renderPage({ 
-    title: "Lifetime-Statistik", 
-    body, 
-    scripts: ["/public/stats-lifetime.js"] 
+  res.send(renderPage({
+    title: "Lifetime-Statistik",
+    body,
+    back: "/statistik",
+    scripts: ["/public/stats-lifetime.js"]
   }));
 });
 
 app.get("/bestellen", (req, res) => {
 
   if (!req.session?.isAuthenticated) {
+    req.session.redirectAfterLogin = "/bestellen";
     const body = `
-      <header class="page-header">
-        <h1>Bestellen (geschützt)</h1>
-        <p>Bitte Passwort eingeben.</p>
-      </header>
-      <form class="card" method="post" action="/bestellen/login">
+      <form class="card login-card" method="post" action="/bestellen/login">
+        <h2>Bestellen (geschützt)</h2>
+        <p class="hint">Bitte Passwort eingeben.</p>
         <label for="password">Passwort</label>
-        <input id="password" name="password" type="password" required />
+        <input id="password" name="password" type="password" required autofocus />
         <button type="submit">Einloggen</button>
       </form>
     `;
@@ -288,46 +430,82 @@ app.get("/bestellen", (req, res) => {
   }
 
   const body = `
-    <header class="page-header">
-      <h1>Bestellungen aufnehmen</h1>
-      <p>Neue Bestellungen aufnehmen und bestehende Bestellungen bearbeiten.</p>
-      <div class="header-actions">
-        <a href="/"><button type="button">Zur Startseite</button></a>
-        <a href="/admin"><button type="button" class="secondary">Produkte bearbeiten</button></a>
-        <a href="/statistik"><button type="button" class="secondary">Statistik</button></a>
-        <a href="/verlauf"><button type="button" class="secondary">Verlauf</button></a>
-      </div>
-    </header>
+    <div id="wizard" class="wizard">
+      <section class="wizard-step" id="step-name">
+        <h2>Wer bestellt?</h2>
+        <button id="to-items-btn" class="big-cta" type="button" disabled>Weiter</button>
+        <div class="autocomplete-wrap">
+          <input id="customer-name" type="text" placeholder="Name eingeben..." autocomplete="off" autofocus />
+        </div>
+        <div id="all-names" class="all-names"></div>
+      </section>
 
-
-    <section class="grid">
-      <div class="card">
-        <h2>Neue Bestellung</h2>
-        <form id="order-form">
-          <label for="customer-name">Name</label>
-          <input id="customer-name" name="customer-name" type="text" placeholder="Kundenname..." required />
-          <div id="menu"></div>
-          <div class="total-row">
-            <span>Gesamtpreis:</span>
-            <strong id="total">0.00 €</strong>
-          </div>
-          <button type="submit">Bestellung aufgeben</button>
-        </form>
-
+      <section class="wizard-step hidden" id="step-items">
+        <div class="wizard-name-row">
+          <h2>Was bestellt <span id="name-display"></span>?</h2>
+          <button type="button" class="button secondary small" id="change-name-btn">Name ändern</button>
+        </div>
+        <div id="menu" class="menu-grid"></div>
+        <div class="total-row">
+          <span>Gesamt:</span>
+          <strong id="total">0,00 €</strong>
+        </div>
+        <button id="submit-order-btn" class="big-cta" type="button" disabled>Bestellung aufgeben</button>
         <div id="order-result" class="order-result"></div>
-      </div>
-      <div class="card">
-        <h2>Offene Bestellungen</h2>
-        <div id="staff-orders" class="orders"></div>
-      </div>
-    </section>
+      </section>
+    </div>
   `;
 
   res.send(
     renderPage({
-      title: "Bestellen",
+      title: "Neue Bestellung",
       body,
+      back: "/",
       scripts: ["/public/bestellen.js"]
+    })
+  );
+});
+
+app.get("/namen", (req, res) => {
+  if (!req.session?.isAuthenticated) {
+    req.session.redirectAfterLogin = "/namen";
+    res.redirect("/");
+    return;
+  }
+  const body = `
+    <div class="card">
+      <h2>Neuen Namen hinzufügen</h2>
+      <form id="add-name-form" class="inline-form">
+        <input id="new-name" type="text" placeholder="Name..." required />
+        <button type="submit">Hinzufügen</button>
+      </form>
+    </div>
+    <div class="card">
+      <h2>Gespeicherte Namen</h2>
+      <input id="name-filter" type="text" placeholder="Suchen..." />
+      <div id="names-list" class="names-list"></div>
+    </div>
+  `;
+  res.send(renderPage({ title: "Namen", body, back: "/", scripts: ["/public/names.js"] }));
+});
+
+app.get("/status", (req, res) => {
+  const body = `
+    <form id="status-form" class="card login-card">
+      <h2>Bestellstatus</h2>
+      <p class="hint">Gib deine Bestell-ID ein.</p>
+      <label for="order-id">Bestell-ID</label>
+      <input id="order-id" name="order-id" type="text" pattern="\\d+" required />
+      <button type="submit">Status anzeigen</button>
+    </form>
+    <p class="hint" style="text-align:center">Oder scanne den QR-Code.</p>
+  `;
+  res.send(
+    renderPage({
+      title: "Status",
+      body,
+      back: "/",
+      scripts: ["/public/start.js"]
     })
   );
 });
@@ -336,36 +514,31 @@ app.post("/bestellen/login", express.urlencoded({ extended: true }), (req, res) 
   const { password } = req.body;
   if (password === ORDER_PASSWORD) {
     req.session.isAuthenticated = true;
-    res.redirect("/bestellen");
+    res.redirect(req.session.redirectAfterLogin || "/");
+    delete req.session.redirectAfterLogin;
     return;
   }
   res.status(401).send(
     renderPage({
-      title: "Bestellen",
+      title: "Zugriff verweigert",
       body: `
-        <header class="page-header">
-          <h1>Zugriff verweigert</h1>
-          <p>Passwort stimmt nicht.</p>
-        </header>
-        <a class="button" href="/bestellen">Zurück</a>
+        <div class="card login-card">
+          <h2>Zugriff verweigert</h2>
+          <p class="hint">Passwort stimmt nicht.</p>
+          <a class="button" href="/">Zurück</a>
+        </div>
       `
     })
   );
 });
 
 app.get("/bestellungen", (req, res) => {
-  const body = `
-    <header class="page-header">
-      <h1>Küchenanzeige</h1>
-      <p>Live Übersicht aller offenen Bestellungen.</p>
-    </header>
-    <div id="kitchen-orders" class="orders"></div>
-  `;
-
+  const body = `<div id="kitchen-orders" class="orders"></div>`;
   res.send(
     renderPage({
-      title: "Bestellungen",
+      title: "Küche",
       body,
+      back: "/",
       scripts: ["/public/bestellungen.js"]
     })
   );
@@ -373,25 +546,18 @@ app.get("/bestellungen", (req, res) => {
 
 app.get("/verlauf", (req, res) => {
   if (!req.session?.isAuthenticated) {
-    res.redirect("/bestellen");
+    res.redirect("/");
     return;
   }
   const body = `
-    <header class="page-header">
-      <h1>Verlauf (Heute)</h1>
-      <p>Alle abgeholten Bestellungen des Tages.</p>
-      <div class="header-actions">
-        <a href="/bestellen"><button type="button">Zurück</button></a>
-        <button id="clear-history-btn" class="button danger" onclick="clearHistory()">Verlauf leeren</button>
-      </div>
-    </header>
+    <button id="clear-history-btn" class="button danger" onclick="clearHistory()">Verlauf leeren</button>
     <div id="history-orders" class="orders history-orders"></div>
   `;
-
   res.send(
     renderPage({
-      title: "Bestellverlauf",
+      title: "Verlauf",
       body,
+      back: "/",
       scripts: ["/public/verlauf.js"]
     })
   );
@@ -469,6 +635,65 @@ app.delete("/api/admin/categories/:name", async (req, res) => {
   }
 });
 
+// ---- Customer names (autocomplete) ----
+app.get("/api/names", async (req, res) => {
+  if (!req.session?.isAuthenticated) return res.status(401).send();
+  try {
+    const names = await db.getCustomerNames();
+    res.json(names);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/names/search", async (req, res) => {
+  if (!req.session?.isAuthenticated) return res.status(401).send();
+  try {
+    const q = (req.query.q || "").trim();
+    if (!q) {
+      const names = await db.getCustomerNames();
+      return res.json(names);
+    }
+    const names = await db.searchCustomerNames(q);
+    res.json(names);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/names", async (req, res) => {
+  if (!req.session?.isAuthenticated) return res.status(401).send();
+  const { name } = req.body;
+  try {
+    const id = await db.addCustomerName(name);
+    if (!id) return res.status(409).json({ message: "Name existiert bereits" });
+    res.status(201).json({ id, name: (name || "").trim() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put("/api/names/:id", async (req, res) => {
+  if (!req.session?.isAuthenticated) return res.status(401).send();
+  const { name } = req.body;
+  try {
+    await db.updateCustomerName(req.params.id, name);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete("/api/names/:id", async (req, res) => {
+  if (!req.session?.isAuthenticated) return res.status(401).send();
+  try {
+    await db.deleteCustomerName(req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.put("/api/admin/menu/:id", async (req, res) => {
 
   if (!req.session?.isAuthenticated) return res.status(401).send();
@@ -488,7 +713,9 @@ app.get("/api/stats", async (req, res) => {
     const todayStats = await db.getOrderStats(today);
     const totalStats = await db.getOrderStats();
     const lifetimeStats = await db.getLifetimeStats();
-    res.json({ today: todayStats, total: totalStats, lifetime: lifetimeStats });
+    const todayCustomerStats = await db.getCustomerStats(today);
+    const totalCustomerStats = await db.getCustomerStats();
+    res.json({ today: todayStats, total: totalStats, lifetime: lifetimeStats, todayCustomers: todayCustomerStats, totalCustomers: totalCustomerStats });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -656,10 +883,11 @@ app.post("/api/orders", async (req, res) => {
     for (let i = 0; i < qty; i++) {
       orderItems.push({
         name: item.name,
-        price: Number(item.price), // Note: total is price * 1 here, but we'll sum later
+        price: Number(item.price),
         qty: 1,
         done: false,
-        pickedUp: false
+        pickedUp: false,
+        inOven: false
       });
     }
   });
@@ -682,6 +910,10 @@ app.post("/api/orders", async (req, res) => {
   
   try {
     await db.saveOrder(order);
+    // Auto-save customer name for autocomplete (best-effort)
+    if (order.customerName) {
+      try { await db.addCustomerName(order.customerName); } catch (_) {}
+    }
   } catch (err) {
     orders.delete(id);
     usedOrderIds.delete(id);
@@ -745,6 +977,27 @@ app.post("/api/orders/:id/toggle-oven", async (req, res) => {
   res.json(serializeOrder(order));
 });
 
+// Per-item oven toggle
+app.post("/api/orders/:id/items/:index/toggle-oven", async (req, res) => {
+  const order = orders.get(req.params.id);
+  if (!order) {
+    res.status(404).json({ message: "Nicht gefunden" });
+    return;
+  }
+  const index = Number(req.params.index);
+  if (!Number.isInteger(index) || index < 0 || index >= order.items.length) {
+    res.status(400).json({ message: "Ungültiger Index" });
+    return;
+  }
+  order.items[index].inOven = !order.items[index].inOven;
+
+  await db.updateOrderItems(order.id, order.items, order.completed, order.completedAt);
+  broadcastOrders();
+  updateCustomer(order);
+
+  res.json(serializeOrder(order));
+});
+
 app.post("/api/orders/:id/items/:index/pickup", async (req, res) => {
   if (!req.session?.isAuthenticated) return res.status(401).send();
   const order = orders.get(req.params.id);
@@ -794,7 +1047,7 @@ app.post("/api/orders/:id/pickup", async (req, res) => {
 
 app.post("/api/orders/:id/reopen", async (req, res) => {
   if (!req.session?.isAuthenticated) return res.status(401).send();
-  
+
   // order might not be in memory if server restarted
   let order = orders.get(req.params.id);
   if (!order) {
@@ -804,11 +1057,21 @@ app.post("/api/orders/:id/reopen", async (req, res) => {
       }
       orders.set(order.id, order);
   }
-  
+
+  // Reset all items: not done, not in oven, not picked up
+  order.items = order.items.map((item) => ({
+    ...item,
+    done: false,
+    inOven: false,
+    pickedUp: false,
+  }));
   order.pickedUp = false;
   order.pickedUpAt = null;
+  order.completed = false;
+  order.completedAt = null;
 
-  await db.updateOrderPickedUp(order.id, order.pickedUp, order.pickedUpAt);
+  await db.updateOrderItems(order.id, order.items, false, null);
+  await db.updateOrderPickedUp(order.id, false, null);
   broadcastOrders();
   updateCustomer(order);
 
@@ -843,16 +1106,14 @@ app.get("/:orderId", (req, res, next) => {
     return;
   }
   const body = `
-    <header class="page-header">
-      <h1>Bestellstatus</h1>
-      <p>Bestell-ID <strong id="order-id">${req.params.orderId}</strong></p>
-    </header>
+    <p class="hint">Bestell-ID <strong id="order-id">${req.params.orderId}</strong></p>
     <div id="status" class="card"></div>
   `;
   res.send(
     renderPage({
       title: `Status ${req.params.orderId}`,
       body,
+      back: "/status",
       scripts: ["/public/status.js"]
     })
   );
@@ -861,13 +1122,13 @@ app.get("/:orderId", (req, res, next) => {
 app.use((req, res) => {
   res.status(404).send(
     renderPage({
-      title: "Nicht gefunden",
+      title: "404",
       body: `
-        <header class="page-header">
-          <h1>404</h1>
-          <p>Diese Seite gibt es nicht.</p>
-        </header>
-        <a class="button" href="/">Zur Startseite</a>
+        <div class="card login-card">
+          <h2>404</h2>
+          <p class="hint">Diese Seite gibt es nicht.</p>
+          <a class="button" href="/">Zur Startseite</a>
+        </div>
       `
     })
   );

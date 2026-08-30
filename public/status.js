@@ -1,8 +1,17 @@
-const socket = io();
+const socket = io({
+  reconnection: true,
+  reconnectionAttempts: Infinity,
+  reconnectionDelay: 1000,
+  reconnectionDelayMax: 5000,
+});
 const orderId = document.getElementById("order-id").textContent.trim();
 const statusEl = document.getElementById("status");
 
 socket.emit("join", { role: "order", orderId });
+
+socket.on("connect", () => {
+  socket.emit("join", { role: "order", orderId });
+});
 
 let lastCompletedStatus = null;
 
@@ -33,10 +42,11 @@ function renderStatus(order) {
   }
 
   const allDone = order.completed;
-  const ovenStatusHtml = allDone 
-    ? '' 
-    : `<div class="status-banner ${order.inOven ? 'in-oven' : 'not-in-oven'}">
-        Status: ${order.inOven ? 'Im Ofen' : 'Nicht im Ofen'}
+  const anyInOven = order.items.some((i) => i.inOven) && !allDone;
+  const ovenStatusHtml = allDone
+    ? ''
+    : `<div class="status-banner ${anyInOven ? 'in-oven' : 'not-in-oven'}">
+        Status: ${anyInOven ? 'Im Ofen' : 'Nicht im Ofen'}
        </div>`;
 
   statusEl.innerHTML = `
@@ -48,7 +58,7 @@ function renderStatus(order) {
         .map(
           (item) => `
           <li>
-            <span class="${item.done ? "item-done" : ""}">${item.name} × ${item.qty}</span>
+            <span class="${item.done ? "item-done" : ""}">${item.name} × ${item.qty}${item.inOven ? ' 🔥' : ''}</span>
             <span>${item.done ? "✔" : "⏳"}</span>
           </li>
         `
