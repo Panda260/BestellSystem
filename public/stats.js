@@ -91,7 +91,11 @@ document.getElementById("backfill-names-btn").addEventListener("click", async ()
     resultEl.textContent = "";
     try {
         const res = await fetch("/api/names/backfill", { method: "POST" });
-        const data = await res.json();
+        if (res.status === 401) {
+            resultEl.textContent = "Sitzung abgelaufen — bitte neu einloggen.";
+            return;
+        }
+        const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || "Backfill fehlgeschlagen");
         resultEl.textContent = `Fertig: ${data.added} neu hinzugefügt, ${data.skipped} Duplikate übersprungen (${data.total} Namen gesamt).`;
     } catch (err) {

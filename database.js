@@ -497,7 +497,15 @@ const backfillCustomerNames = () => {
                 db.all("SELECT name FROM customer_names", (err2, existing) => {
                     if (err2) return reject(err2);
                     const existingLower = new Set((existing || []).map(r => r.name.toLowerCase()));
-                    const toAdd = orderNames.filter(n => !existingLower.has(n.toLowerCase()));
+                    // Case-insensitive dedup: skip names already in DB AND dedup within toAdd itself
+                    const seenLower = new Set();
+                    const toAdd = [];
+                    orderNames.forEach(n => {
+                        const lower = n.toLowerCase();
+                        if (existingLower.has(lower) || seenLower.has(lower)) return;
+                        seenLower.add(lower);
+                        toAdd.push(n);
+                    });
                     const total = orderNames.length;
                     if (toAdd.length === 0) {
                         return resolve({ total, added: 0, skipped: total });
