@@ -559,9 +559,9 @@ input:focus, select:focus, textarea:focus {
   letter-spacing: -0.02em;
 }
 .order-name {
-  font-size: 1.2rem;
+  font-size: 1.6rem;
   font-weight: 700;
-  color: var(--text-muted);
+  color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1013,7 +1013,7 @@ input:checked + .slider:before { transform: translateX(20px); }
   .orders { grid-template-columns: repeat(2, 1fr); gap: 10px; }
   .order-card { padding: 14px; gap: 10px; }
   .order-number { font-size: 1.4rem; }
-  .order-name { font-size: 1.05rem; }
+  .order-name { font-size: 1.4rem; }
   .oven-toggle { padding: 8px 14px; min-height: 40px; font-size: 0.95rem; }
   .status-list li { padding: 10px 0; font-size: 1rem; }
   button, .button { padding: 13px 20px; min-height: 48px; font-size: 1rem; }
