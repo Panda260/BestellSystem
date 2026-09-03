@@ -376,7 +376,7 @@ app.get("/statistik", (req, res) => {
         <div id="customer-stats-today"></div>
       </div>
       <div class="card">
-        <h2>Bestellungen pro Person (Gesamt)</h2>
+        <h2>Bestellungen pro Person (Gesamt) (<span id="total-customer-count">0</span>)</h2>
         <div id="customer-stats-total"></div>
         <button id="backfill-names-btn" class="button secondary small">Namen in Autocomplete übernehmen</button>
         <p id="backfill-result" class="hint"></p>

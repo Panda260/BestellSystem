@@ -6,6 +6,7 @@ async function loadStats() {
     renderStats("stats-total", total);
     renderCustomerStats("customer-stats-today", todayCustomers);
     renderCustomerStats("customer-stats-total", totalCustomers);
+    document.getElementById("total-customer-count").textContent = Object.keys(totalCustomers).length;
 }
 
 function escapeHtml(s) {
