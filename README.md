@@ -2,6 +2,14 @@
 
 Ein kleines Web-Bestellsystem mit Live-Updates für Kasse, Küche und Kunden.
 
+## Sicherheit bei öffentlichem Betrieb
+
+Der [Security-Review vom 10.09.2026](docs/SECURITY_REVIEW.md) dokumentiert offene
+kritische Sicherheitslücken, ihre Auswirkungen und konkrete Korrekturvorschläge.
+Der aktuelle Stand sollte nicht ungeschützt im Internet betrieben werden.
+Reproduzierbare Docker-Prüfungen sind im Review beschrieben; dieser Review-Branch
+enthält noch keine Behebung der Befunde.
+
 ## Funktionen
 
 - Startseite `/` mit Eingabefeld für die 3-stellige Bestell-ID.
