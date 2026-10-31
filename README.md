@@ -12,6 +12,8 @@ Ein kleines Web-Bestellsystem mit Live-Updates für Kasse, Küche und Kunden.
 
 ## Lokaler Start
 
+Benötigt eine unterstützte Node.js-LTS-Version (24.x, mindestens 24.22.1).
+
 ```bash
 npm install
 npm start
@@ -34,6 +36,19 @@ Standardwerte:
 
 Passen Sie die Werte in `docker-compose.yml` oder per Environment-Overrides an.
 
+### Aktualisieren (z. B. nach Node.js-Sicherheitsupdates)
+
+Ein bestehendes Image behält seine Node-Laufzeit, bis es auf einem frisch
+gezogenen Base-Image neu gebaut wird. Das anonyme Volume `/app/node_modules`
+muss dabei erneuert werden, sonst bleiben native Module (sqlite3) der alten
+Node-Version erhalten:
+
+```bash
+docker compose build --pull
+docker compose up -d --renew-anon-volumes
+docker compose exec bestellsystem node -v
+```
+
 ### Production-Compose (vorgefertigtes Image)
 
 Für den Einsatz mit einem vorgefertigten Image aus der Registry kann
@@ -51,3 +66,5 @@ services:
     volumes:
       - ./data:/app/data
 ```
+
+Aktualisieren mit `docker compose pull && docker compose up -d`.
