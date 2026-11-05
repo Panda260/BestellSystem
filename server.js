@@ -32,7 +32,7 @@ app.use(
 
 app.use("/public", express.static(path.join(__dirname, "public")));
 
-function renderPage({ title, body, scripts = [], back = null, actions = "", bodyClass = "" }) {
+function renderPage({ title, body, scripts = [], back = null, actions = "", center = "", bodyClass = "" }) {
   const backHtml = back
     ? `<a href="${back}" class="topbar-back" aria-label="Zurück"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></a>`
     : "";
@@ -48,9 +48,10 @@ function renderPage({ title, body, scripts = [], back = null, actions = "", body
   <link rel="stylesheet" href="/public/styles.css" />
 </head>
 <body class="${bodyClass}">
-  <header class="topbar">
+  <header class="topbar${center ? " has-center" : ""}">
     ${backHtml}
     <div class="topbar-title">${title}</div>
+    ${center ? `<div class="topbar-center">${center}</div>` : ""}
     <div class="topbar-actions">${actions}</div>
   </header>
   <main class="main">
@@ -168,6 +169,7 @@ app.get("/", (req, res) => {
       title: "BestellSystem",
       body,
       actions: searchIcon + SETTINGS_GEAR + SETTINGS_TOGGLE_JS,
+      center: `<div id="item-summary" class="item-summary" aria-label="Offene Artikel"></div>`,
       scripts: ["/public/home.js"]
     })
   );

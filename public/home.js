@@ -5,6 +5,7 @@ const socket = io({
   reconnectionDelayMax: 5000,
 });
 const staffOrders = document.getElementById("staff-orders");
+const itemSummary = document.getElementById("item-summary");
 
 let allOrders = [];
 let searchQuery = "";
@@ -18,7 +19,30 @@ socket.on("connect", () => {
 socket.on("orders:update", (orders) => {
   allOrders = orders;
   renderOrders(orders);
+  renderItemSummary(orders);
 });
+
+// Anzahl offener (noch nicht abgeholter) Artikel je Sorte im Header
+function renderItemSummary(orders) {
+  if (!itemSummary) return;
+  const counts = new Map();
+  orders.forEach((order) => {
+    order.items.forEach((item) => {
+      if (item.pickedUp) return;
+      counts.set(item.name, (counts.get(item.name) || 0) + 1);
+    });
+  });
+  if (!counts.size) {
+    itemSummary.innerHTML = '<span class="item-summary-empty">Keine offenen Artikel</span>';
+    return;
+  }
+  itemSummary.innerHTML = [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "de"))
+    .map(([name, count]) =>
+      `<span class="item-chip"><span class="item-chip-name">${escapeHtml(name)}:</span> <strong>${count}</strong></span>`
+    )
+    .join("");
+}
 
 function escapeHtml(s) {
   return String(s || "").replace(/[&<>"']/g, (c) => ({

@@ -75,6 +75,37 @@ body {
   gap: 10px;
   position: relative;
 }
+/* Dashboard: Titel links, Artikelzählung mittig, Aktionen rechts */
+.topbar.has-center {
+  display: grid;
+  grid-template-columns: minmax(max-content, 1fr) minmax(0, auto) minmax(max-content, 1fr);
+}
+.topbar.has-center .topbar-actions { justify-self: end; }
+.topbar-center {
+  min-width: 0;
+  display: flex;
+  justify-content: center;
+}
+.item-summary {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  white-space: nowrap;
+  scrollbar-width: none;
+  max-width: 100%;
+}
+.item-summary::-webkit-scrollbar { display: none; }
+.item-chip {
+  flex-shrink: 0;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 0.95rem;
+}
+.item-chip strong { font-weight: 800; }
+.item-summary-empty { color: var(--text-muted); font-size: 0.95rem; }
+
 .topbar-back {
   display: inline-flex;
   align-items: center;
