@@ -95,13 +95,14 @@ window.addEventListener("resize", () => {
   fitBoxes();
 });
 
-// German clock
+// German clock (always Europe/Berlin, regardless of the TV device's timezone)
 const clockEl = document.getElementById("tv-clock");
 function updateClock() {
   const now = new Date();
   clockEl.textContent = now.toLocaleTimeString("de-DE", {
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: "Europe/Berlin",
   });
 }
 updateClock();

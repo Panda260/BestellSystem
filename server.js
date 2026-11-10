@@ -253,7 +253,7 @@ app.get("/admin", (req, res) => {
 });
 
 app.get("/tv", (req, res) => {
-  const now = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+  const now = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" });
   const body = `<h1 class="tv-title">Aktuelle Bestellungen</h1><div id="tv-list" class="tv-list"></div><div id="tv-clock" class="tv-clock">${now}</div>`;
   res.send(renderPage({
     title: "TV-Anzeige",
