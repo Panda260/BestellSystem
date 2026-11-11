@@ -30,6 +30,18 @@ const initDb = () => {
                         const hasCategory = columns.some(c => c.name === 'category');
                         if (!hasMaxLimit) db.run("ALTER TABLE menu_items ADD COLUMN max_limit INTEGER DEFAULT NULL");
                         if (!hasCategory) db.run("ALTER TABLE menu_items ADD COLUMN category TEXT DEFAULT NULL");
+                        // Cooking time (minutes) and station ('oven' | 'fryer') for TV countdowns
+                        const hasCookMinutes = columns.some(c => c.name === 'cook_minutes');
+                        if (!hasCookMinutes) {
+                            db.serialize(() => {
+                                db.run("ALTER TABLE menu_items ADD COLUMN cook_minutes INTEGER DEFAULT NULL");
+                                db.run("ALTER TABLE menu_items ADD COLUMN station TEXT DEFAULT NULL");
+                                // One-time defaults derived from the item name
+                                db.run("UPDATE menu_items SET station = 'oven', cook_minutes = 10 WHERE LOWER(name) LIKE '%pizza%'");
+                                db.run("UPDATE menu_items SET cook_minutes = 8 WHERE LOWER(name) LIKE '%pizza%' AND LOWER(name) LIKE '%margherita%'");
+                                db.run("UPDATE menu_items SET station = 'fryer', cook_minutes = 6 WHERE LOWER(name) LIKE '%brezel%'");
+                            });
+                        }
                     }
                 });
             });
@@ -152,19 +164,19 @@ const getMenuItems = (onlyActive = true) => {
     });
 };
 
-const addMenuItem = (name, price) => {
+const addMenuItem = (name, price, max_limit = null, category = null, cook_minutes = null, station = null) => {
     return new Promise((resolve, reject) => {
-        db.run("INSERT INTO menu_items (name, price) VALUES (?, ?)", [name, price], function(err) {
+        db.run("INSERT INTO menu_items (name, price, max_limit, category, cook_minutes, station) VALUES (?, ?, ?, ?, ?, ?)", [name, price, max_limit, category, cook_minutes, station], function(err) {
             if (err) reject(err);
             else resolve(this.lastID);
         });
     });
 };
 
-const updateMenuItem = (id, name, price, active, max_limit, category) => {
+const updateMenuItem = (id, name, price, active, max_limit, category, cook_minutes = null, station = null) => {
     return new Promise((resolve, reject) => {
-        db.run("UPDATE menu_items SET name = ?, price = ?, active = ?, max_limit = ?, category = ? WHERE id = ?", 
-            [name, price, active ? 1 : 0, max_limit, category, id], 
+        db.run("UPDATE menu_items SET name = ?, price = ?, active = ?, max_limit = ?, category = ?, cook_minutes = ?, station = ? WHERE id = ?",
+            [name, price, active ? 1 : 0, max_limit, category, cook_minutes, station, id],
             function(err) {
                 if (err) reject(err);
                 else resolve();
@@ -186,28 +198,89 @@ const deleteMenuItem = (id) => {
 const saveOrder = (order) => {
     return new Promise((resolve, reject) => {
         db.serialize(() => {
-            db.run("INSERT INTO orders (id, items, total, customerName, createdAt, completed, inOven, pickedUp, pickedUpAt, historyCleared) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 
-                [order.id, JSON.stringify(order.items), order.total, order.customerName, order.createdAt, order.completed ? 1 : 0, order.inOven ? 1 : 0, order.pickedUp ? 1 : 0, order.pickedUpAt || null, 0], 
-                function(err) {
-                    if (err) {
-                        reject(err);
-                        return;
-                    }
-                    
-                    // Increment lifetime counts
-                    const stmt = db.prepare(`
-                        INSERT INTO lifetime_stats (item_name, qty) VALUES (?, 1)
-                        ON CONFLICT(item_name) DO UPDATE SET qty = qty + 1
-                    `);
-                    order.items.forEach(item => {
-                        stmt.run(item.name);
-                    });
-                    stmt.finalize((err2) => {
-                        if (err2) reject(err2);
-                        else resolve();
-                    });
+            db.run("BEGIN TRANSACTION", (beginErr) => {
+                if (beginErr) {
+                    reject(beginErr);
+                    return;
                 }
-            );
+
+                const rollback = (err) => {
+                    db.run("ROLLBACK", () => reject(err));
+                };
+
+                db.run("INSERT INTO orders (id, items, total, customerName, createdAt, completed, inOven, pickedUp, pickedUpAt, historyCleared) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    [order.id, JSON.stringify(order.items), order.total, order.customerName, order.createdAt, order.completed ? 1 : 0, order.inOven ? 1 : 0, order.pickedUp ? 1 : 0, order.pickedUpAt || null, 0],
+                    (insertErr) => {
+                        if (insertErr) {
+                            rollback(insertErr);
+                            return;
+                        }
+
+                        // The individual product limit is the remaining quantity.
+                        // Decrement it in the same transaction as the order so two
+                        // simultaneous orders cannot consume the same last item.
+                        const quantitiesByName = {};
+                        order.items.forEach(item => {
+                            quantitiesByName[item.name] = (quantitiesByName[item.name] || 0) + 1;
+                        });
+                        const limitedItems = Object.entries(quantitiesByName);
+
+                        const decrementNextLimit = (index) => {
+                            if (index >= limitedItems.length) {
+                                const stmt = db.prepare(`
+                                    INSERT INTO lifetime_stats (item_name, qty) VALUES (?, 1)
+                                    ON CONFLICT(item_name) DO UPDATE SET qty = qty + 1
+                                `);
+                                order.items.forEach(item => stmt.run(item.name));
+                                stmt.finalize((statsErr) => {
+                                    if (statsErr) {
+                                        rollback(statsErr);
+                                        return;
+                                    }
+                                    db.run("COMMIT", (commitErr) => {
+                                        if (commitErr) rollback(commitErr);
+                                        else resolve();
+                                    });
+                                });
+                                return;
+                            }
+
+                            const [name, quantity] = limitedItems[index];
+                            db.get("SELECT id, max_limit FROM menu_items WHERE name = ? LIMIT 1", [name], (lookupErr, menuItem) => {
+                                if (lookupErr) {
+                                    rollback(lookupErr);
+                                    return;
+                                }
+
+                                // Items no longer present in the menu, or items
+                                // without an individual limit, remain unaffected.
+                                if (!menuItem || menuItem.max_limit === null) {
+                                    decrementNextLimit(index + 1);
+                                    return;
+                                }
+
+                                db.run(
+                                    "UPDATE menu_items SET max_limit = max_limit - ? WHERE id = ? AND max_limit >= ?",
+                                    [quantity, menuItem.id, quantity],
+                                    function (updateErr) {
+                                        if (updateErr) {
+                                            rollback(updateErr);
+                                            return;
+                                        }
+                                        if (this.changes !== 1) {
+                                            rollback(new Error(`Limit für ${name} überschritten`));
+                                            return;
+                                        }
+                                        decrementNextLimit(index + 1);
+                                    }
+                                );
+                            });
+                        };
+
+                        decrementNextLimit(0);
+                    }
+                );
+            });
         });
     });
 };
@@ -617,8 +690,18 @@ const setTvSetting = (key, value) => {
     });
 };
 
+const closeDb = () => {
+    return new Promise((resolve) => {
+        db.close((err) => {
+            if (err) console.error("Fehler beim Schließen der Datenbank:", err);
+            resolve();
+        });
+    });
+};
+
 module.exports = {
     initDb,
+    closeDb,
     getMenuItems,
     addMenuItem,
     updateMenuItem,

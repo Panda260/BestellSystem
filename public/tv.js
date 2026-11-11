@@ -51,6 +51,12 @@ const TV_DEFAULTS = {
   textReady: "#065f46",
   titleColor: "#f0f0f0",
   clockColor: "#0b1220",
+  // Lunch break & capacity
+  pauseStart: "12:30",
+  pauseEnd: "13:30",
+  ovenSlots: "4",
+  fryerSlots: "2",
+  changeMinutes: "1",
 };
 
 let tvColors = { ...TV_DEFAULTS };
@@ -62,6 +68,7 @@ async function loadTvColors() {
     const settings = await res.json();
     tvColors = { ...TV_DEFAULTS, ...settings };
     applyTvColors();
+    renderTV(lastOrders);
   } catch (_) {}
 }
 
@@ -80,14 +87,41 @@ function applyTvColors() {
   root.style.setProperty("--tv-clock-color", tvColors.clockColor);
 }
 
+// Longest cooking time per station from the menu — used (conservatively)
+// for the "noch möglich" capacity of future orders.
+let capacityMinutes = { oven: 10, fryer: 6 };
+async function loadMenuTimes() {
+  try {
+    const res = await fetch("/api/menu");
+    if (!res.ok) return;
+    const menu = await res.json();
+    ["oven", "fryer"].forEach((st) => {
+      const times = menu.filter((m) => m.station === st && m.cook_minutes).map((m) => m.cook_minutes);
+      if (times.length) capacityMinutes[st] = Math.max(...times);
+    });
+    renderTV(lastOrders);
+  } catch (_) {}
+}
+
 // Listen for settings updates via socket
 socket.on("tv-settings:update", () => {
   loadTvColors();
 });
 
 loadTvColors();
+loadMenuTimes();
 
+// Server clock offset, so countdowns match the kitchen even if the TV's clock is off
+let clockOffset = 0;
+socket.on("server:time", (serverNow) => {
+  clockOffset = serverNow - Date.now();
+});
+const nowMs = () => Date.now() + clockOffset;
+
+let lastOrders = [];
 socket.on("orders:update", (orders) => {
+  lastOrders = orders;
+  loadMenuTimes(); // menu cook times may have changed
   renderTV(orders);
 });
 
@@ -95,18 +129,60 @@ window.addEventListener("resize", () => {
   fitBoxes();
 });
 
-// German clock (always Europe/Berlin, regardless of the TV device's timezone)
-const clockEl = document.getElementById("tv-clock");
-function updateClock() {
-  const now = new Date();
-  clockEl.textContent = now.toLocaleTimeString("de-DE", {
+function fmtTime(ms) {
+  return new Date(ms).toLocaleTimeString("de-DE", {
     hour: "2-digit",
     minute: "2-digit",
     timeZone: "Europe/Berlin",
   });
 }
-updateClock();
-setInterval(updateClock, 1000);
+
+// mm:ss, or +mm:ss once overdue
+function fmtCountdown(ms) {
+  const overdue = ms < 0;
+  const s = Math.floor(Math.abs(ms) / 1000);
+  const text = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  return overdue ? `+${text}` : text;
+}
+
+// German clock (always Europe/Berlin) + time left in the lunch break
+const clockEl = document.getElementById("tv-clock");
+const planEl = document.getElementById("tv-plan");
+let lastPlan = null;
+
+function updateClock() {
+  const now = nowMs();
+  let pauseText = "";
+  let pauseCls = "";
+  if (lastPlan) {
+    const { pauseStartMs, pauseEndMs } = lastPlan;
+    if (now < pauseStartMs) {
+      pauseText = `Pause ab ${fmtTime(pauseStartMs)}`;
+    } else if (now < pauseEndMs) {
+      const left = pauseEndMs - now;
+      pauseText = `Pause noch ${Math.ceil(left / 60000)} min`;
+      if (left <= 10 * 60000) pauseCls = "warn";
+    } else {
+      pauseText = "Pause vorbei";
+      pauseCls = "over";
+    }
+  }
+  clockEl.innerHTML = `${fmtTime(now)}${pauseText ? `<span class="tv-pause ${pauseCls}">${pauseText}</span>` : ""}`;
+}
+
+// Per-second tick: only update countdown texts, no full re-render
+function tick() {
+  updateClock();
+  const now = nowMs();
+  listEl.querySelectorAll("[data-ends]").forEach((el) => {
+    const left = Number(el.dataset.ends) - now;
+    el.querySelector(".tv-chip-time").textContent = fmtCountdown(left);
+    el.classList.toggle("overdue", left < 0);
+  });
+}
+setInterval(tick, 1000);
+// ETAs and capacity shift over time — recompute every 15 s
+setInterval(() => renderTV(lastOrders), 15000);
 
 function escapeHtml(s) {
   return String(s || "").replace(/[&<>"']/g, (c) => ({
@@ -114,20 +190,91 @@ function escapeHtml(s) {
   }[c]));
 }
 
-// Emoji per item, matched by name (case-insensitive)
+// Emoji per item, matched by name (case-insensitive), falling back to the station
 const ITEM_EMOJIS = [
   { match: "pizza", emoji: "🍕" },
   { match: "brezel", emoji: "🥨" },
 ];
+const STATION_EMOJIS = { oven: "🍕", fryer: "🥨" };
 
-function itemEmoji(itemName) {
-  const n = String(itemName || "").toLowerCase();
+function itemEmoji(item) {
+  const n = String(item.name || "").toLowerCase();
   const hit = ITEM_EMOJIS.find((e) => n.includes(e.match));
-  return hit ? hit.emoji : "";
+  return hit ? hit.emoji : (STATION_EMOJIS[item.station] || "");
+}
+
+// Chips per order: cooking items one by one (with countdown),
+// waiting / done items grouped by emoji ("🍕×2").
+function renderChips(order, plan) {
+  const cooking = [];
+  const groups = new Map(); // "waiting|🍕" -> count
+  order.items.forEach((item, index) => {
+    if (item.pickedUp) return;
+    const emoji = itemEmoji(item);
+    if (!emoji) return;
+    const info = plan.items.get(itemKey(order.id, index));
+    if (!item.done && item.inOven) {
+      if (info?.state === "cooking" && info.hasStart) {
+        cooking.push({ emoji, endsAt: info.endsAt });
+      } else {
+        cooking.push({ emoji, endsAt: null });
+      }
+      return;
+    }
+    const state = item.done ? "done" : "waiting";
+    const key = `${state}|${emoji}`;
+    groups.set(key, (groups.get(key) || 0) + 1);
+  });
+
+  const now = nowMs();
+  const chips = cooking
+    .sort((a, b) => (a.endsAt || 0) - (b.endsAt || 0))
+    .map((c) => {
+      if (!c.endsAt) return `<span class="tv-chip cooking">${c.emoji}</span>`;
+      const left = c.endsAt - now;
+      return `<span class="tv-chip cooking ${left < 0 ? "overdue" : ""}" data-ends="${c.endsAt}">${c.emoji}<span class="tv-chip-time">${fmtCountdown(left)}</span></span>`;
+    });
+  // waiting first, then done
+  ["waiting", "done"].forEach((state) => {
+    groups.forEach((count, key) => {
+      const [s, emoji] = key.split("|");
+      if (s !== state) return;
+      const n = count > 1 ? `<span class="tv-chip-count">×${count}</span>` : "";
+      const check = state === "done" ? '<span class="tv-chip-check">✓</span>' : "";
+      chips.push(`<span class="tv-chip ${state}">${emoji}${n}${check}</span>`);
+    });
+  });
+  return chips.length ? `<div class="tv-chips">${chips.join("")}</div>` : "";
+}
+
+function renderPlanBar(plan) {
+  if (!planEl) return;
+  const now = nowMs();
+  if (now >= plan.pauseEndMs) {
+    planEl.innerHTML = "";
+    planEl.style.display = "none";
+    return;
+  }
+  planEl.style.display = "";
+  const cap = (emoji, n) => `<span class="tv-cap ${n === 0 ? "none" : ""}">${emoji} ${n}</span>`;
+  planEl.innerHTML = `<span class="tv-cap-label">Noch möglich bis ${fmtTime(plan.pauseEndMs)}:</span>${cap("🍕", plan.capacity.oven)}${cap("🥨", plan.capacity.fryer)}`;
 }
 
 function renderTV(orders) {
   const active = orders.filter((o) => !o.pickedUp);
+
+  const plan = planKitchen(active, nowMs(), {
+    ovenSlots: tvColors.ovenSlots,
+    fryerSlots: tvColors.fryerSlots,
+    changeMinutes: tvColors.changeMinutes,
+    pauseStart: tvColors.pauseStart,
+    pauseEnd: tvColors.pauseEnd,
+    ovenCapacityMinutes: capacityMinutes.oven,
+    fryerCapacityMinutes: capacityMinutes.fryer,
+  });
+  lastPlan = plan;
+  renderPlanBar(plan);
+  updateClock();
 
   // Compute item-level status for each order (ignoring picked-up items)
   const withStatus = active.map((o) => {
@@ -150,9 +297,7 @@ function renderTV(orders) {
       status = "waiting";
     }
 
-    const emojis = remaining.map((i) => itemEmoji(i.name)).join("");
-
-    return { order: o, status, total, doneCount, ovenCount, emojis };
+    return { order: o, status, total, doneCount, ovenCount };
   });
 
   // Sort: 1) ready first, 2) in-oven, 3) waiting — each by createdAt asc
@@ -169,10 +314,19 @@ function renderTV(orders) {
     return;
   }
 
-  listEl.innerHTML = sorted.map(({ order: o, status, total, doneCount, ovenCount, emojis }) => {
+  listEl.innerHTML = sorted.map(({ order: o, status, total, doneCount, ovenCount }) => {
     const name = escapeHtml(o.customerName || "");
-    const emojiLine = emojis ? `<span class="tv-emojis">${emojis}</span>` : "";
     const showCount = total > 1;
+    const chips = renderChips(o, plan);
+
+    // Estimated ready time while something is still waiting for oven/fryer
+    let eta = "";
+    const hasWaiting = o.items.some((i, idx) => plan.items.get(itemKey(o.id, idx))?.state === "waiting");
+    const etaMs = plan.orderEta.get(o.id);
+    if (hasWaiting && etaMs) {
+      const late = etaMs > plan.pauseEndMs;
+      eta = `<span class="tv-eta ${late ? "late" : ""}">fertig ca. ${fmtTime(etaMs)}</span>`;
+    }
 
     let cls = "tv-box waiting";
     let tag = "";
@@ -190,7 +344,8 @@ function renderTV(orders) {
     return `
       <div class="${cls}">
         <span class="tv-box-name">${name}</span>
-        ${emojiLine}
+        ${chips}
+        ${eta}
         ${tag}
         ${count}
       </div>
@@ -236,6 +391,8 @@ function fitBoxes() {
   const fontPx = Math.max(0.8, Math.min(3, size / 24));
   const padPx = Math.max(6, Math.min(24, size / 10));
   const tagFont = Math.max(0.7, Math.min(1.5, size / 36));
+  // Emoji chips get about as big as the name, so they're readable from afar
+  const chipFont = Math.max(0.8, Math.min(2.6, size / 26));
 
   boxes.forEach((box) => {
     box.style.padding = `${padPx}px`;
@@ -250,9 +407,14 @@ function fitBoxes() {
       // Height is always one line = font-size * line-height.
       shrinkToFit(name, fontPx, innerW);
     }
-    const emojiEl = box.querySelector(".tv-emojis");
-    if (emojiEl) {
-      shrinkToFit(emojiEl, tagFont, innerW);
+    const chipsEl = box.querySelector(".tv-chips");
+    if (chipsEl) {
+      // Chips wrap; limit them to roughly half of the box height
+      shrinkToHeight(chipsEl, chipFont, size * 0.4);
+    }
+    const etaEl = box.querySelector(".tv-eta");
+    if (etaEl) {
+      shrinkToFit(etaEl, tagFont, innerW);
     }
     if (tag) {
       shrinkToFit(tag, tagFont, innerW);
@@ -260,6 +422,14 @@ function fitBoxes() {
     const countEl = box.querySelector(".tv-count");
     if (countEl) {
       shrinkToFit(countEl, Math.max(0.6, tagFont * 0.7), innerW);
+    }
+    // If the box still overflows (many chips + ETA + tag), shrink the chips further
+    if (chipsEl) {
+      let fs = parseFloat(chipsEl.style.fontSize);
+      while (fs > 0.5 && box.scrollHeight > box.clientHeight) {
+        fs -= 0.05;
+        chipsEl.style.fontSize = `${fs}rem`;
+      }
     }
   });
 }
@@ -282,4 +452,14 @@ function shrinkToFit(el, maxFont, maxW) {
 
   el.style.display = origDisplay;
   el.style.flex = origFlex;
+}
+
+// Shrink font size until a wrapping element fits within maxH.
+function shrinkToHeight(el, maxFont, maxH) {
+  let fs = maxFont;
+  el.style.fontSize = `${fs}rem`;
+  while (fs > 0.5 && el.scrollHeight > maxH) {
+    fs -= 0.05;
+    el.style.fontSize = `${fs}rem`;
+  }
 }

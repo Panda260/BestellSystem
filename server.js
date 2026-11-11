@@ -103,12 +103,32 @@ function generateOrderId() {
   }
 }
 
+// Menu cache by name: provides cook time + station (oven/fryer) for order items
+let menuByName = new Map();
+async function refreshMenuCache() {
+  try {
+    const menu = await db.getMenuItems(false);
+    menuByName = new Map(menu.map((m) => [m.name, m]));
+  } catch (err) {
+    console.error("Fehler beim Laden des Menüs:", err);
+  }
+}
+
+function withCookInfo(item) {
+  const m = menuByName.get(item.name);
+  return {
+    ...item,
+    station: m?.station || null,
+    cookMinutes: m?.cook_minutes ?? null,
+  };
+}
+
 function serializeOrder(order) {
   // Derive order-level inOven from items (any item in oven -> order in oven)
   const anyInOven = order.items.some((i) => i.inOven);
   return {
     id: order.id,
-    items: order.items,
+    items: order.items.map(withCookInfo),
     total: order.total,
     customerName: order.customerName,
     createdAt: order.createdAt,
@@ -129,6 +149,7 @@ function broadcastOrders() {
   // Staff sees everything not picked up (to mark them as picked up)
   io.to("staff").emit("orders:update", allActiveOrders);
   // TV sees everything not picked up
+  io.to("tv").emit("server:time", Date.now()); // lets the TV correct its clock for countdowns
   io.to("tv").emit("orders:update", allActiveOrders);
 }
 
@@ -238,6 +259,14 @@ app.get("/admin", (req, res) => {
             <select id="new-category">
               <option value="">Keine</option>
             </select>
+            <label for="new-station">Gerät (für TV-Countdown)</label>
+            <select id="new-station">
+              <option value="">Keins</option>
+              <option value="oven">Ofen</option>
+              <option value="fryer">Fritteuse</option>
+            </select>
+            <label for="new-cook">Garzeit in Minuten (optional)</label>
+            <input id="new-cook" type="number" min="1" step="1" />
             <button type="submit">Hinzufügen</button>
           </form>
         </div>
@@ -254,12 +283,12 @@ app.get("/admin", (req, res) => {
 
 app.get("/tv", (req, res) => {
   const now = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" });
-  const body = `<h1 class="tv-title">Aktuelle Bestellungen</h1><div id="tv-list" class="tv-list"></div><div id="tv-clock" class="tv-clock">${now}</div>`;
+  const body = `<h1 class="tv-title">Aktuelle Bestellungen</h1><div id="tv-list" class="tv-list"></div><div id="tv-clock" class="tv-clock">${now}</div><div id="tv-plan" class="tv-plan"></div>`;
   res.send(renderPage({
     title: "TV-Anzeige",
     body,
     bodyClass: "tv-view",
-    scripts: ["/public/tv.js"]
+    scripts: ["/public/kitchen-plan.js", "/public/tv.js"]
   }));
 });
 
@@ -316,6 +345,30 @@ app.get("/tv-einstellungen", (req, res) => {
         <label class="color-picker-row">
           <span>Uhrzeit</span>
           <input type="color" id="tv-clock-color" data-key="clockColor" />
+        </label>
+      </div>
+      <h2>Mittagspause &amp; Kapazität</h2>
+      <p class="hint">Für Countdowns und „Noch möglich“ auf der TV-Anzeige.</p>
+      <div class="settings-color-grid">
+        <label class="color-picker-row plan-setting-row">
+          <span>Pause Beginn</span>
+          <input type="time" data-key="pauseStart" />
+        </label>
+        <label class="color-picker-row plan-setting-row">
+          <span>Pause Ende</span>
+          <input type="time" data-key="pauseEnd" />
+        </label>
+        <label class="color-picker-row plan-setting-row">
+          <span>Plätze im Ofen</span>
+          <input type="number" min="1" step="1" data-key="ovenSlots" />
+        </label>
+        <label class="color-picker-row plan-setting-row">
+          <span>Plätze in der Fritteuse</span>
+          <input type="number" min="1" step="1" data-key="fryerSlots" />
+        </label>
+        <label class="color-picker-row plan-setting-row">
+          <span>Wechselzeit (min)</span>
+          <input type="number" min="0" step="1" data-key="changeMinutes" />
         </label>
       </div>
       <button id="tv-settings-reset" class="button secondary">Auf Standard zurücksetzen</button>
@@ -588,10 +641,11 @@ app.get("/api/admin/menu", async (req, res) => {
 
 app.post("/api/admin/menu", async (req, res) => {
   if (!req.session?.isAuthenticated) return res.status(401).send();
-  const { name, price } = req.body;
+  const { name, price, max_limit, category, cook_minutes, station } = req.body;
   try {
-    const id = await db.addMenuItem(name, price);
-    res.status(201).json({ id, name, price, active: 1 });
+    const id = await db.addMenuItem(name, price, max_limit, category, cook_minutes ?? null, station || null);
+    await refreshMenuCache();
+    res.status(201).json({ id, name, price, max_limit, category, cook_minutes, station, active: 1 });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -711,9 +765,11 @@ app.delete("/api/names/:id", async (req, res) => {
 app.put("/api/admin/menu/:id", async (req, res) => {
 
   if (!req.session?.isAuthenticated) return res.status(401).send();
-  const { name, price, active, max_limit, category } = req.body;
+  const { name, price, active, max_limit, category, cook_minutes, station } = req.body;
   try {
-    await db.updateMenuItem(req.params.id, name, price, active, max_limit, category);
+    await db.updateMenuItem(req.params.id, name, price, active, max_limit, category, cook_minutes ?? null, station || null);
+    await refreshMenuCache();
+    broadcastOrders();
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -785,6 +841,7 @@ app.delete("/api/admin/menu/:id", async (req, res) => {
   if (!req.session?.isAuthenticated) return res.status(401).send();
   try {
     await db.deleteMenuItem(req.params.id);
+    await refreshMenuCache();
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -822,6 +879,16 @@ app.get("/api/orders/:id/qr", async (req, res) => {
 app.post("/api/orders", async (req, res) => {
   const { items, customerName } = req.body;
 
+  if (!customerName || typeof customerName !== 'string' || customerName.trim() === '') {
+    res.status(400).json({ message: "Name ist erforderlich" });
+    return;
+  }
+
+  if (!Array.isArray(items) || items.length === 0) {
+    res.status(400).json({ message: "Keine Artikel" });
+    return;
+  }
+
   // Limit check
   const now = new Date();
   const startLimit = new Date();
@@ -837,53 +904,37 @@ app.post("/api/orders", async (req, res) => {
     
     // Group by item name and category
     const categoryUsage = {};
-    const itemUsage = {};
     Object.keys(todayStats).forEach(name => {
       const menuItem = menu.find(m => m.name === name);
       if (menuItem) {
         if (menuItem.category) {
           categoryUsage[menuItem.category] = (categoryUsage[menuItem.category] || 0) + todayStats[name];
         }
-        itemUsage[name] = (itemUsage[name] || 0) + todayStats[name];
       }
     });
 
-    // Check limits for new items
+    // Category limits retain their existing time-window behavior.
     for (const item of items) {
       const menuItem = menu.find(m => m.name === item.name);
-      if (!menuItem) continue;
-
-      // 1. Check item-specific limit
-      if (menuItem.max_limit) {
-        const currentQty = itemUsage[item.name] || 0;
-        if (currentQty + 1 > menuItem.max_limit) {
-          return res.status(400).json({ message: `Limit für ${item.name} überschritten!` });
-        }
-      }
-
-      // 2. Check category limit
-      if (menuItem.category) {
-        const cat = categories.find(c => c.name === menuItem.category);
-        if (cat && cat.max_limit) {
-          const currentCatQty = categoryUsage[menuItem.category] || 0;
-          if (currentCatQty + 1 > cat.max_limit) {
-            return res.status(400).json({ message: `Kategorielimit für ${menuItem.category} überschritten!` });
-          }
-        }
+      if (!menuItem || !menuItem.category) continue;
+      const cat = categories.find(c => c.name === menuItem.category);
+      const requestedQty = Number(item.qty);
+      if (cat && cat.max_limit && (categoryUsage[menuItem.category] || 0) + requestedQty > cat.max_limit) {
+        return res.status(400).json({ message: `Kategorielimit für ${menuItem.category} überschritten!` });
       }
     }
   }
 
-
-
-  if (!customerName || typeof customerName !== 'string' || customerName.trim() === '') {
-    res.status(400).json({ message: "Name ist erforderlich" });
-    return;
-  }
-
-  if (!Array.isArray(items) || items.length === 0) {
-    res.status(400).json({ message: "Keine Artikel" });
-    return;
+  const menu = await db.getMenuItems(true);
+  for (const item of items) {
+    const requestedQty = Number(item.qty);
+    if (!Number.isInteger(requestedQty) || requestedQty <= 0) {
+      return res.status(400).json({ message: "Ungültige Artikelmenge" });
+    }
+    const menuItem = menu.find(m => m.name === item.name);
+    if (menuItem && menuItem.max_limit !== null && requestedQty > menuItem.max_limit) {
+      return res.status(400).json({ message: `Limit für ${item.name} überschritten!` });
+    }
   }
   const id = generateOrderId();
   if (!id) {
@@ -921,7 +972,8 @@ app.post("/api/orders", async (req, res) => {
 
   orders.set(id, order);
   usedOrderIds.add(id);
-  
+  if (!menuByName.size || !menuByName.has(order.items[0]?.name)) await refreshMenuCache();
+
   try {
     await db.saveOrder(order);
     // Auto-save customer name for autocomplete (best-effort)
@@ -932,6 +984,9 @@ app.post("/api/orders", async (req, res) => {
     orders.delete(id);
     usedOrderIds.delete(id);
     console.error("Fehler beim Speichern der Bestellung in DB:", err);
+    if (err.message && err.message.startsWith("Limit für ")) {
+      return res.status(400).json({ message: `${err.message}!` });
+    }
     return res.status(500).json({ message: "Datenbankfehler: Konnte Bestellung nicht speichern." });
   }
 
@@ -1004,6 +1059,8 @@ app.post("/api/orders/:id/items/:index/toggle-oven", async (req, res) => {
     return;
   }
   order.items[index].inOven = !order.items[index].inOven;
+  // Start time for the TV countdown
+  order.items[index].ovenStartedAt = order.items[index].inOven ? new Date().toISOString() : null;
 
   await db.updateOrderItems(order.id, order.items, order.completed, order.completedAt);
   broadcastOrders();
@@ -1179,6 +1236,7 @@ io.on("connection", (socket) => {
 server.listen(PORT, async () => {
   try {
     await db.initDb();
+    await refreshMenuCache();
     const allOrders = await db.getAllOrders(false); // onlyOpen=false -> fetch all to populate usedOrderIds
     allOrders.forEach(o => {
       usedOrderIds.add(o.id);
@@ -1191,4 +1249,19 @@ server.listen(PORT, async () => {
     console.error("Fehler beim Starten der Datenbank:", err);
   }
 });
+
+// Graceful shutdown (docker stop / compose redeploy sends SIGTERM)
+let shuttingDown = false;
+function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`${signal} empfangen – fahre herunter...`);
+  // Fallback: hard exit if something hangs
+  setTimeout(() => process.exit(1), 5000).unref();
+  io.close(); // closes socket.io clients and the http server
+  server.closeAllConnections();
+  db.closeDb().finally(() => process.exit(0));
+}
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
 

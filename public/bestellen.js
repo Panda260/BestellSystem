@@ -94,23 +94,13 @@ async function loadMenu() {
   menu = await response.json();
 
   const limitsResponse = await fetch("/api/limits");
-  const { items: itemLimits, categories: categoryLimits } = await limitsResponse.json();
-
-  const now = new Date();
-  const h = now.getHours();
-  const m = now.getMinutes();
-  const isInLimitWindow = (h === 12 && m >= 30) || (h === 13 && m <= 45);
+  const { items: itemLimits } = await limitsResponse.json();
 
   menuContainer.innerHTML = menu
     .map((item, index) => {
       const limitInfo = itemLimits.find((l) => l.name === item.name);
       let remaining = null;
-      if (limitInfo && limitInfo.max_limit && isInLimitWindow) {
-        const current = limitInfo.category
-          ? categoryLimits[limitInfo.category] || 0
-          : limitInfo.current_usage;
-        remaining = Math.max(0, limitInfo.max_limit - current);
-      }
+      if (limitInfo && limitInfo.max_limit !== null) remaining = limitInfo.max_limit;
       quantities[index] = 0;
 
       return `

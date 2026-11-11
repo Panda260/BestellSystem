@@ -10,6 +10,12 @@ const DEFAULTS = {
   textReady: "#065f46",
   titleColor: "#f0f0f0",
   clockColor: "#0b1220",
+  // Lunch break & capacity (TV countdowns)
+  pauseStart: "12:30",
+  pauseEnd: "13:30",
+  ovenSlots: "4",
+  fryerSlots: "2",
+  changeMinutes: "1",
 };
 
 let current = {};
@@ -28,7 +34,28 @@ function applyToPickers() {
     const key = input.dataset.key;
     input.value = current[key] || DEFAULTS[key] || "#000000";
   });
+  document.querySelectorAll(".plan-setting-row input").forEach((input) => {
+    const key = input.dataset.key;
+    input.value = current[key] || DEFAULTS[key] || "";
+  });
 }
+
+document.querySelectorAll(".plan-setting-row input").forEach((input) => {
+  input.addEventListener("change", async () => {
+    const key = input.dataset.key;
+    const value = input.value;
+    if (value === "") return;
+    current[key] = value;
+    try {
+      await fetch("/api/tv-settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key, value }),
+      });
+      showSaved();
+    } catch (_) {}
+  });
+});
 
 document.querySelectorAll(".color-picker-row input[type=color]").forEach((input) => {
   input.addEventListener("input", async () => {

@@ -847,12 +847,44 @@ input:checked + .slider:before { transform: translateX(20px); }
   align-items: center;
   justify-content: center;
   line-height: 1.1;
+  min-height: 1.1em;
 }
-.tv-emojis {
+/* Item chips: emoji + countdown / count, colored by item status */
+.tv-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 0.2em;
+  flex-shrink: 0;
+  max-width: 100%;
+  line-height: 1;
+}
+.tv-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.12em;
+  padding: 0.12em 0.3em;
+  border-radius: 0.4em;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.tv-chip-count,
+.tv-chip-time,
+.tv-chip-check { font-size: 0.6em; }
+.tv-chip.waiting { background: rgba(0, 0, 0, 0.08); color: #4b5563; }
+.tv-chip.cooking { background: var(--tv-tag-oven, #f59e0b); color: #fff; }
+.tv-chip.cooking.overdue { background: #dc2626; animation: tv-blink 1s steps(2, start) infinite; }
+.tv-chip.done { background: var(--tv-tag-ready, #10b981); color: #fff; }
+@keyframes tv-blink { to { opacity: 0.55; } }
+.tv-eta {
+  font-weight: 800;
+  opacity: 0.85;
   flex-shrink: 0;
   white-space: nowrap;
-  line-height: 1.1;
 }
+.tv-eta.late { color: #dc2626; opacity: 1; }
 .tv-tag {
   font-weight: 800;
   padding: 4px 10px;
@@ -919,7 +951,39 @@ input:checked + .slider:before { transform: translateX(20px); }
   font-variant-numeric: tabular-nums;
   z-index: 9999;
   box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
 }
+.tv-pause {
+  font-size: 0.75em;
+  font-weight: 700;
+  color: #4b5563;
+}
+.tv-pause.warn { color: #d97706; }
+.tv-pause.over { color: #dc2626; }
+/* "Noch möglich" capacity, bottom right */
+.tv-plan {
+  position: fixed;
+  bottom: 16px;
+  right: 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 1.3rem;
+  font-weight: 800;
+  color: #0b1220;
+  background: #fff;
+  padding: 8px 18px;
+  border-radius: 12px;
+  border: 2px solid var(--border-strong);
+  font-variant-numeric: tabular-nums;
+  z-index: 9999;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+.tv-plan:empty { display: none; }
+.tv-cap-label { font-size: 0.75em; font-weight: 700; color: #4b5563; }
+.tv-cap.none { color: #dc2626; }
 .tv-conn-status {
   position: fixed;
   top: 16px;

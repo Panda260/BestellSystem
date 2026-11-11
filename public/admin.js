@@ -40,7 +40,7 @@ function renderCategories() {
                     <tr>
                         <td>${cat.name}</td>
                         <td>
-                            <input type="number" value="${cat.max_limit || ''}" 
+                            <input type="number" value="${cat.max_limit ?? ''}"
                                 onchange="updateCategory('${cat.name}', this.value)" 
                                 placeholder="Kein Limit" style="width: 80px" />
                         </td>
@@ -61,7 +61,16 @@ function renderMenu(menu) {
             <div class="admin-item-info">
                 <div><small>Name:</small><input type="text" value="${item.name}" onchange="updateItem(${item.id}, 'name', this.value)" /></div>
                 <div><small>Preis (€):</small><input type="number" step="0.01" value="${item.price.toFixed(2)}" onchange="updateItem(${item.id}, 'price', this.value)" /></div>
-                <div><small>Indiv. Limit:</small><input type="number" value="${item.max_limit || ''}" placeholder="Kein" onchange="updateItem(${item.id}, 'max_limit', this.value)" /></div>
+                <div><small>Indiv. Limit:</small><input type="number" value="${item.max_limit ?? ''}" placeholder="Kein" onchange="updateItem(${item.id}, 'max_limit', this.value)" /></div>
+                <div>
+                    <small>Gerät:</small>
+                    <select onchange="updateItem(${item.id}, 'station', this.value)">
+                        <option value="" ${!item.station ? 'selected' : ''}>Keins</option>
+                        <option value="oven" ${item.station === 'oven' ? 'selected' : ''}>Ofen</option>
+                        <option value="fryer" ${item.station === 'fryer' ? 'selected' : ''}>Fritteuse</option>
+                    </select>
+                </div>
+                <div><small>Garzeit (min):</small><input type="number" min="1" step="1" value="${item.cook_minutes ?? ''}" placeholder="–" onchange="updateItem(${item.id}, 'cook_minutes', this.value)" /></div>
                 <div>
                     <small>Kategorie:</small>
                     <select onchange="updateItem(${item.id}, 'category', this.value)">
@@ -111,7 +120,9 @@ async function updateItem(id, field, value) {
         price: item.price,
         active: !!item.active,
         max_limit: item.max_limit,
-        category: item.category
+        category: item.category,
+        cook_minutes: item.cook_minutes,
+        station: item.station
     };
 
     // Apply the change
@@ -120,6 +131,8 @@ async function updateItem(id, field, value) {
     if (field === 'active') payload.active = value;
     if (field === 'max_limit') payload.max_limit = value === "" ? null : parseInt(value);
     if (field === 'category') payload.category = value === "" ? null : value;
+    if (field === 'cook_minutes') payload.cook_minutes = value === "" ? null : parseInt(value);
+    if (field === 'station') payload.station = value === "" ? null : value;
 
     await fetch(`/api/admin/menu/${id}`, {
         method: "PUT",
@@ -157,11 +170,13 @@ document.getElementById("add-product-form").addEventListener("submit", async (e)
     const price = parseFloat(document.getElementById("new-price").value);
     const max_limit = document.getElementById("new-limit").value ? parseInt(document.getElementById("new-limit").value) : null;
     const category = document.getElementById("new-category").value || null;
-    
+    const station = document.getElementById("new-station").value || null;
+    const cook_minutes = document.getElementById("new-cook").value ? parseInt(document.getElementById("new-cook").value) : null;
+
     await fetch("/api/admin/menu", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, price, max_limit, category })
+        body: JSON.stringify({ name, price, max_limit, category, station, cook_minutes })
     });
     
     e.target.reset();
