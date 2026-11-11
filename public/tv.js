@@ -114,6 +114,18 @@ function escapeHtml(s) {
   }[c]));
 }
 
+// Emoji per item, matched by name (case-insensitive)
+const ITEM_EMOJIS = [
+  { match: "pizza", emoji: "🍕" },
+  { match: "brezel", emoji: "🥨" },
+];
+
+function itemEmoji(itemName) {
+  const n = String(itemName || "").toLowerCase();
+  const hit = ITEM_EMOJIS.find((e) => n.includes(e.match));
+  return hit ? hit.emoji : "";
+}
+
 function renderTV(orders) {
   const active = orders.filter((o) => !o.pickedUp);
 
@@ -138,7 +150,9 @@ function renderTV(orders) {
       status = "waiting";
     }
 
-    return { order: o, status, total, doneCount, ovenCount };
+    const emojis = remaining.map((i) => itemEmoji(i.name)).join("");
+
+    return { order: o, status, total, doneCount, ovenCount, emojis };
   });
 
   // Sort: 1) ready first, 2) in-oven, 3) waiting — each by createdAt asc
@@ -155,8 +169,9 @@ function renderTV(orders) {
     return;
   }
 
-  listEl.innerHTML = sorted.map(({ order: o, status, total, doneCount, ovenCount }) => {
+  listEl.innerHTML = sorted.map(({ order: o, status, total, doneCount, ovenCount, emojis }) => {
     const name = escapeHtml(o.customerName || "");
+    const emojiLine = emojis ? `<span class="tv-emojis">${emojis}</span>` : "";
     const showCount = total > 1;
 
     let cls = "tv-box waiting";
@@ -175,6 +190,7 @@ function renderTV(orders) {
     return `
       <div class="${cls}">
         <span class="tv-box-name">${name}</span>
+        ${emojiLine}
         ${tag}
         ${count}
       </div>
@@ -233,6 +249,10 @@ function fitBoxes() {
       // Name is white-space: nowrap, so only width matters.
       // Height is always one line = font-size * line-height.
       shrinkToFit(name, fontPx, innerW);
+    }
+    const emojiEl = box.querySelector(".tv-emojis");
+    if (emojiEl) {
+      shrinkToFit(emojiEl, tagFont, innerW);
     }
     if (tag) {
       shrinkToFit(tag, tagFont, innerW);
