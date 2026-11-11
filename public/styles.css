@@ -984,6 +984,9 @@ input:checked + .slider:before { transform: translateX(20px); }
 .tv-plan:empty { display: none; }
 .tv-cap-label { font-size: 0.75em; font-weight: 700; color: #4b5563; }
 .tv-cap.none { color: #dc2626; }
+.tv-global-eta { font-size: 1.15em; }
+.tv-global-eta.late { color: #dc2626; }
+.tv-global-eta + .tv-cap-label { margin-left: 8px; padding-left: 14px; border-left: 2px solid var(--border-strong); }
 .tv-conn-status {
   position: fixed;
   top: 16px;

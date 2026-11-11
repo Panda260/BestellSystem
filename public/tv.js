@@ -174,6 +174,11 @@ function updateClock() {
 function tick() {
   updateClock();
   const now = nowMs();
+  const globalEl = planEl && planEl.querySelector("[data-ready]");
+  if (globalEl) {
+    const left = Number(globalEl.dataset.ready) - now;
+    globalEl.textContent = left > 0 ? fmtCountdown(left) : "gleich";
+  }
   listEl.querySelectorAll("[data-ends]").forEach((el) => {
     const left = Number(el.dataset.ends) - now;
     el.querySelector(".tv-chip-time").textContent = fmtCountdown(left);
@@ -247,17 +252,41 @@ function renderChips(order, plan) {
   return chips.length ? `<div class="tv-chips">${chips.join("")}</div>` : "";
 }
 
+// Global estimate: when will the very last open order be ready?
+function lastReadyMs(plan) {
+  let max = 0;
+  plan.orderEta.forEach((t) => { if (t > max) max = t; });
+  return max;
+}
+
+function readyText(plan, now) {
+  const end = lastReadyMs(plan);
+  const left = end - now;
+  return { end, left, text: left > 0 ? fmtCountdown(left) : "gleich" };
+}
+
 function renderPlanBar(plan) {
   if (!planEl) return;
   const now = nowMs();
-  if (now >= plan.pauseEndMs) {
+  const pauseOver = now >= plan.pauseEndMs;
+  const end = lastReadyMs(plan);
+  if (pauseOver && !end) {
     planEl.innerHTML = "";
     planEl.style.display = "none";
     return;
   }
   planEl.style.display = "";
   const cap = (emoji, n) => `<span class="tv-cap ${n === 0 ? "none" : ""}">${emoji} ${n}</span>`;
-  planEl.innerHTML = `<span class="tv-cap-label">Noch möglich bis ${fmtTime(plan.pauseEndMs)}:</span>${cap("🍕", plan.capacity.oven)}${cap("🥨", plan.capacity.fryer)}`;
+  let html = "";
+  if (end) {
+    const r = readyText(plan, now);
+    const late = end > plan.pauseEndMs;
+    html += `<span class="tv-cap-label">Alles fertig ca. ${fmtTime(end)}</span><span class="tv-global-eta ${late ? "late" : ""}" data-ready="${end}">${r.text}</span>`;
+  }
+  if (!pauseOver) {
+    html += `<span class="tv-cap-label">Noch möglich bis ${fmtTime(plan.pauseEndMs)}:</span>${cap("🍕", plan.capacity.oven)}${cap("🥨", plan.capacity.fryer)}`;
+  }
+  planEl.innerHTML = html;
 }
 
 function renderTV(orders) {
