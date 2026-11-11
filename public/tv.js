@@ -316,8 +316,9 @@ function renderTV(orders) {
 
   listEl.innerHTML = sorted.map(({ order: o, status, total, doneCount, ovenCount }) => {
     const name = escapeHtml(o.customerName || "");
-    const showCount = total > 1;
     const chips = renderChips(o, plan);
+    // Chips already show per-item status — the "1/3" counter is only needed without them
+    const showCount = total > 1 && !chips;
 
     // Estimated ready time while something is still waiting for oven/fryer
     let eta = "";
@@ -392,7 +393,7 @@ function fitBoxes() {
   const padPx = Math.max(6, Math.min(24, size / 10));
   const tagFont = Math.max(0.7, Math.min(1.5, size / 36));
   // Emoji chips get about as big as the name, so they're readable from afar
-  const chipFont = Math.max(0.8, Math.min(2.6, size / 26));
+  const chipFont = Math.max(1.6, Math.min(5.2, size / 13));
 
   boxes.forEach((box) => {
     box.style.padding = `${padPx}px`;
@@ -401,16 +402,17 @@ function fitBoxes() {
 
     const tag = box.querySelector(".tv-tag");
 
+    const chipsEl = box.querySelector(".tv-chips");
     const name = box.querySelector(".tv-box-name");
     if (name) {
       // Name is white-space: nowrap, so only width matters.
       // Height is always one line = font-size * line-height.
-      shrinkToFit(name, fontPx, innerW);
+      // With chips the name gets a bit smaller to leave room for them.
+      shrinkToFit(name, chipsEl ? fontPx * 0.75 : fontPx, innerW);
     }
-    const chipsEl = box.querySelector(".tv-chips");
     if (chipsEl) {
       // Chips wrap; limit them to roughly half of the box height
-      shrinkToHeight(chipsEl, chipFont, size * 0.4);
+      shrinkToHeight(chipsEl, chipFont, size * 0.6);
     }
     const etaEl = box.querySelector(".tv-eta");
     if (etaEl) {

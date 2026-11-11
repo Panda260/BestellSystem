@@ -871,8 +871,8 @@ input:checked + .slider:before { transform: translateX(20px); }
   white-space: nowrap;
 }
 .tv-chip-count,
-.tv-chip-time,
 .tv-chip-check { font-size: 0.6em; }
+.tv-chip-time { font-size: 0.75em; }
 .tv-chip.waiting { background: rgba(0, 0, 0, 0.08); color: #4b5563; }
 .tv-chip.cooking { background: var(--tv-tag-oven, #f59e0b); color: #fff; }
 .tv-chip.cooking.overdue { background: #dc2626; animation: tv-blink 1s steps(2, start) infinite; }
