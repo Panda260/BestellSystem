@@ -137,12 +137,11 @@ function fmtTime(ms) {
   });
 }
 
-// mm:ss, or +mm:ss once overdue
+// mm:ss, or "Gleich fertig" once the countdown has run out
 function fmtCountdown(ms) {
-  const overdue = ms < 0;
-  const s = Math.floor(Math.abs(ms) / 1000);
-  const text = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-  return overdue ? `+${text}` : text;
+  if (ms <= 0) return "Gleich fertig";
+  const s = Math.ceil(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
 // German clock (always Europe/Berlin) + time left in the lunch break
@@ -177,12 +176,12 @@ function tick() {
   const globalEl = planEl && planEl.querySelector("[data-ready]");
   if (globalEl) {
     const left = Number(globalEl.dataset.ready) - now;
-    globalEl.textContent = left > 0 ? fmtCountdown(left) : "gleich";
+    globalEl.textContent = fmtCountdown(left);
   }
   listEl.querySelectorAll("[data-ends]").forEach((el) => {
     const left = Number(el.dataset.ends) - now;
     el.querySelector(".tv-chip-time").textContent = fmtCountdown(left);
-    el.classList.toggle("overdue", left < 0);
+    el.classList.toggle("overdue", left <= 0);
   });
 }
 setInterval(tick, 1000);
@@ -237,7 +236,7 @@ function renderChips(order, plan) {
     .map((c) => {
       if (!c.endsAt) return `<span class="tv-chip cooking">${c.emoji}</span>`;
       const left = c.endsAt - now;
-      return `<span class="tv-chip cooking ${left < 0 ? "overdue" : ""}" data-ends="${c.endsAt}">${c.emoji}<span class="tv-chip-time">${fmtCountdown(left)}</span></span>`;
+      return `<span class="tv-chip cooking ${left <= 0 ? "overdue" : ""}" data-ends="${c.endsAt}">${c.emoji}<span class="tv-chip-time">${fmtCountdown(left)}</span></span>`;
     });
   // waiting first, then done
   ["waiting", "done"].forEach((state) => {
@@ -262,7 +261,7 @@ function lastReadyMs(plan) {
 function readyText(plan, now) {
   const end = lastReadyMs(plan);
   const left = end - now;
-  return { end, left, text: left > 0 ? fmtCountdown(left) : "gleich" };
+  return { end, left, text: fmtCountdown(left) };
 }
 
 function renderPlanBar(plan) {
