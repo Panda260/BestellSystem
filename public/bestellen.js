@@ -1,4 +1,8 @@
 const socket = io();
+watchConnection(socket);
+
+// Einstellung: QR-Code nach Bestellung automatisch anzeigen (Standard: ja)
+const showQrAfterOrder = document.getElementById("wizard")?.dataset.showQr !== "0";
 
 let menu = [];
 let lastOrderData = null;
@@ -195,7 +199,7 @@ submitOrderBtn.addEventListener("click", async () => {
     <button class="show-qr-btn" onclick="showQRModal()">QR-Code anzeigen</button>
     <button class="button secondary small" onclick="resetWizard()">Neue Bestellung</button>
   `;
-  showQRModal();
+  if (showQrAfterOrder) showQRModal();
 });
 
 window.resetWizard = () => {

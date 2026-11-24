@@ -58,6 +58,7 @@ function renderPage({ title, body, scripts = [], back = null, actions = "", cent
     ${body}
   </main>
   <script src="/socket.io/socket.io.js"></script>
+  <script src="/public/connection.js"></script>
   ${scripts.map((src) => `<script src="${src}"></script>`).join("\n")}
 </body>
 </html>`;
@@ -71,6 +72,7 @@ const SETTINGS_GEAR = `<button type="button" class="icon-btn" id="settings-btn" 
   <a href="/namen">Namen</a>
   <a href="/tv-einstellungen">TV-Einstellungen</a>
   <a href="/verlauf">Verlauf</a>
+  <a href="/einstellungen">Einstellungen</a>
 </div>`;
 
 const SETTINGS_TOGGLE_JS = `<script>
@@ -384,6 +386,44 @@ app.get("/tv-einstellungen", (req, res) => {
   }));
 });
 
+// Allgemeine Einstellungen (gespeichert in derselben Key-Value-Tabelle wie die TV-Einstellungen)
+async function getShowQrSetting() {
+  try {
+    const settings = await db.getTvSettings();
+    return settings.orderShowQr !== "0"; // Standard: QR-Code anzeigen
+  } catch (_) {
+    return true;
+  }
+}
+
+app.get("/einstellungen", async (req, res) => {
+  if (!req.session?.isAuthenticated) {
+    res.redirect("/");
+    return;
+  }
+  const showQr = await getShowQrSetting();
+  const body = `
+    <div class="tv-settings">
+      <h2>Bestellung</h2>
+      <p class="hint">Änderungen werden sofort gespeichert und gelten für alle Geräte.</p>
+      <label class="toggle-row">
+        <span>
+          <strong>QR-Code nach Bestellung anzeigen</strong>
+          <small class="hint">Öffnet nach „Bestellung aufgeben“ automatisch den QR-Code für den Kunden.</small>
+        </span>
+        <input type="checkbox" id="setting-show-qr" data-key="orderShowQr" ${showQr ? "checked" : ""} />
+      </label>
+      <p id="settings-saved" class="hint" style="opacity:0;">Gespeichert!</p>
+    </div>
+  `;
+  res.send(renderPage({
+    title: "Einstellungen",
+    body,
+    back: "/",
+    scripts: ["/public/einstellungen.js"]
+  }));
+});
+
 // API: Get TV settings
 app.get("/api/tv-settings", async (req, res) => {
   try {
@@ -469,7 +509,7 @@ app.get("/statistik-lifetime", (req, res) => {
   }));
 });
 
-app.get("/bestellen", (req, res) => {
+app.get("/bestellen", async (req, res) => {
 
   if (!req.session?.isAuthenticated) {
     req.session.redirectAfterLogin = "/bestellen";
@@ -486,8 +526,9 @@ app.get("/bestellen", (req, res) => {
     return;
   }
 
+  const showQr = await getShowQrSetting();
   const body = `
-    <div id="wizard" class="wizard">
+    <div id="wizard" class="wizard" data-show-qr="${showQr ? "1" : "0"}">
       <section class="wizard-step" id="step-name">
         <h2>Wer bestellt?</h2>
         <button id="to-items-btn" class="big-cta" type="button" disabled>Weiter</button>

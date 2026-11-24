@@ -6,6 +6,7 @@ const socket = io({
 });
 const kitchenOrders = document.getElementById("kitchen-orders");
 
+watchConnection(socket);
 socket.emit("join", { role: "kitchen" });
 
 socket.on("connect", () => {

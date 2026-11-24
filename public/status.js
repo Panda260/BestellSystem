@@ -7,6 +7,7 @@ const socket = io({
 const orderId = document.getElementById("order-id").textContent.trim();
 const statusEl = document.getElementById("status");
 
+watchConnection(socket);
 socket.emit("join", { role: "order", orderId });
 
 socket.on("connect", () => {

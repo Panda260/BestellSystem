@@ -10,6 +10,7 @@ const itemSummary = document.getElementById("item-summary");
 let allOrders = [];
 let searchQuery = "";
 
+watchConnection(socket);
 socket.emit("join", { role: "staff" });
 
 socket.on("connect", () => {
