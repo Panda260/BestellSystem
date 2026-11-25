@@ -1,5 +1,7 @@
 // Live-Verbindungsanzeige: Banner oben, solange die WebSocket-Verbindung weg ist.
 // Nutzung auf einer Seite: watchConnection(socket);
+// Außerdem: Auto-Reload nach einem Update (watchAppVersion, in watchConnection enthalten).
+// Eine Seite kann das Neuladen aufschieben: window.appReloadBlocked = () => true;
 (function () {
   const GRACE_MS = 2000; // kurze Aussetzer (Seitenwechsel, Reconnect) nicht anzeigen
   const BACK_MS = 2500; // wie lange "Wieder verbunden" sichtbar bleibt
@@ -17,7 +19,39 @@
     return el;
   }
 
+  // ---- Auto-Reload nach Update ----
+  const pageVersion = document.querySelector('meta[name="app-version"]')?.content || "";
+  let pendingReload = false;
+
+  function reloadWhenFree() {
+    const blocked = typeof window.appReloadBlocked === "function" && window.appReloadBlocked();
+    if (!blocked) {
+      window.location.reload();
+      return;
+    }
+    if (!pendingReload) {
+      pendingReload = true;
+      const el = getBanner();
+      el.className = "conn-banner update";
+      el.textContent = "Neue Version installiert – Seite lädt nach dieser Bestellung neu.";
+      // erneut prüfen, sobald die Eingabe abgeschlossen ist
+      const iv = setInterval(() => {
+        if (!window.appReloadBlocked()) {
+          clearInterval(iv);
+          window.location.reload();
+        }
+      }, 2000);
+    }
+  }
+
+  window.watchAppVersion = function (socket) {
+    socket.on("app:version", (serverVersion) => {
+      if (pageVersion && serverVersion && serverVersion !== pageVersion) reloadWhenFree();
+    });
+  };
+
   window.watchConnection = function (socket) {
+    window.watchAppVersion(socket);
     let downTimer = null;
     let hideTimer = null;
     let shownDown = false;
@@ -38,13 +72,15 @@
     socket.on("connect", () => {
       clearTimeout(downTimer);
       downTimer = null;
-      if (!shownDown) return;
+      if (!shownDown || pendingReload) return;
       shownDown = false;
       const el = getBanner();
       el.className = "conn-banner up";
       el.textContent = "Wieder verbunden";
       clearTimeout(hideTimer);
-      hideTimer = setTimeout(() => { el.className = "conn-banner"; }, BACK_MS);
+      hideTimer = setTimeout(() => {
+        if (!pendingReload) el.className = "conn-banner"; // Update-Hinweis stehen lassen
+      }, BACK_MS);
     });
     socket.on("disconnect", scheduleDown);
     socket.on("connect_error", scheduleDown);

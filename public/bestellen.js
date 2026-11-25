@@ -1,5 +1,8 @@
 const socket = io();
 watchConnection(socket);
+// Nach einem Update nicht mitten in einer Eingabe neu laden
+window.appReloadBlocked = () =>
+  !!nameInput.value.trim() && !document.querySelector("#order-result .badge");
 
 // Einstellung: QR-Code nach Bestellung automatisch anzeigen (Standard: ja)
 const showQrAfterOrder = document.getElementById("wizard")?.dataset.showQr !== "0";

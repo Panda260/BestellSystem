@@ -1209,3 +1209,4 @@ input:checked + .slider:before { transform: translateX(20px); }
 .toggle-row input[type=checkbox]:checked { background: var(--success); }
 .toggle-row input[type=checkbox]:checked::after { transform: translateX(24px); }
 .toggle-row input[type=checkbox]:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
+.conn-banner.update { transform: none; opacity: 1; background: var(--primary); }

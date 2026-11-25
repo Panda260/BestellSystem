@@ -2,6 +2,8 @@ const express = require("express");
 const session = require("express-session");
 const http = require("http");
 const path = require("path");
+const fs = require("fs");
+const crypto = require("crypto");
 const QRCode = require("qrcode");
 const { Server } = require("socket.io");
 const db = require("./database");
@@ -12,6 +14,21 @@ const server = http.createServer(app);
 const io = new Server(server);
 
 const PORT = process.env.PORT || 3000;
+
+// Versionskennung aus dem Inhalt von server.js und public/: ändert sich nur mit dem Code,
+// nicht bei einem einfachen Neustart. Dient als Cache-Busting (?v=) und für das Auto-Reload der Seiten.
+const APP_VERSION = (() => {
+  const hash = crypto.createHash("sha256");
+  const add = (file) => { hash.update(file); hash.update(fs.readFileSync(file)); };
+  add(__filename);
+  const pubDir = path.join(__dirname, "public");
+  fs.readdirSync(pubDir).sort().forEach((f) => {
+    const full = path.join(pubDir, f);
+    if (fs.statSync(full).isFile()) add(full);
+  });
+  return hash.digest("hex").slice(0, 12);
+})();
+const withVersion = (src) => (src.startsWith("/public/") ? `${src}?v=${APP_VERSION}` : src);
 const ORDER_PASSWORD = process.env.BESTELL_PASSWORD || "admin";
 const SESSION_SECRET = process.env.SESSION_SECRET || "bestellsystem-secret";
 
@@ -44,8 +61,9 @@ function renderPage({ title, body, scripts = [], back = null, actions = "", cent
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="theme-color" content="#ffffff" />
+  <meta name="app-version" content="${APP_VERSION}" />
   <title>${title}</title>
-  <link rel="stylesheet" href="/public/styles.css" />
+  <link rel="stylesheet" href="${withVersion("/public/styles.css")}" />
 </head>
 <body class="${bodyClass}">
   <header class="topbar${center ? " has-center" : ""}">
@@ -58,8 +76,8 @@ function renderPage({ title, body, scripts = [], back = null, actions = "", cent
     ${body}
   </main>
   <script src="/socket.io/socket.io.js"></script>
-  <script src="/public/connection.js"></script>
-  ${scripts.map((src) => `<script src="${src}"></script>`).join("\n")}
+  <script src="${withVersion("/public/connection.js")}"></script>
+  ${scripts.map((src) => `<script src="${withVersion(src)}"></script>`).join("\n")}
 </body>
 </html>`;
 }
@@ -1247,6 +1265,8 @@ app.use((req, res) => {
 });
 
 io.on("connection", (socket) => {
+  // Seiten vergleichen das mit ihrer eigenen Version und laden nach einem Update neu
+  socket.emit("app:version", APP_VERSION);
   socket.on("join", ({ role, orderId }) => {
     if (role === "kitchen") {
       socket.join("kitchen");
@@ -1285,7 +1305,7 @@ server.listen(PORT, async () => {
         orders.set(o.id, o);
       }
     });
-    console.log(`BestellSystem läuft auf http://localhost:${PORT}`);
+    console.log(`BestellSystem läuft auf http://localhost:${PORT} (Version ${APP_VERSION})`);
   } catch (err) {
     console.error("Fehler beim Starten der Datenbank:", err);
   }

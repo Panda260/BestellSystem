@@ -4,6 +4,7 @@ const socket = io({
   reconnectionDelay: 1000,
   reconnectionDelayMax: 5000,
 });
+watchAppVersion(socket);
 const listEl = document.getElementById("tv-list");
 
 socket.emit("join", { role: "tv" });
